@@ -22,6 +22,7 @@ class DataType:
     graph: str
     constraint: str
     scores: bool
+    taxon: bool = False
 
 
 print('Loading data...')
@@ -29,8 +30,8 @@ print('Loading data...')
 print(mbdb.list_collection_names())
 
 dataTypes = [
-    DataType("prot", "prot", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True),
-    DataType("gene", "gene", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True),
+    DataType("prot", "prot", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True),
+    DataType("gene", "gene", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True, True),
     DataType("omim", "omim", "", True),
     DataType("gobp", "go", generate_GO_namespace_constraint("biological_process"), True),
     DataType("gocc", "go", generate_GO_namespace_constraint("cellular_component"), True),
@@ -85,12 +86,13 @@ for dataType in dataTypes:
 
         counter += 1
 
-    print("Downloading label and description data for " + dataType.dbCollection + "...")
-    query = generate_scores_query(dataType.graph, dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(port, query))
-    dbCol = mbdb[dataType.dbCollection]
-
     if (dataType.scores):
+
+        print("Downloading scores for " + dataType.dbCollection + "...")
+        query = generate_scores_query(dataType.graph, dataType.constraint)
+        data = urllib.request.urlopen(generateUrl(port, query))
+        dbCol = mbdb[dataType.dbCollection]
+
         firstLine = True
         print("Updating score data for " + dataType.dbCollection + "...")
         counter = 0
@@ -105,6 +107,28 @@ for dataType in dataTypes:
             toScore = int(comps[2])
             refScore = fromScore + toScore
             update = {"$set": {"refScore": refScore, "toScore" : toScore, "fromScore" : fromScore}}
+            response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+
+            counter += 1
+
+    if (dataType.taxon):
+        print("Downloading taxa data for " + dataType.dbCollection + "...")
+        query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>", dataType.constraint)
+        data = urllib.request.urlopen(generateUrl(port, query))
+        dbCol = mbdb[dataType.dbCollection]
+
+        firstLine = True
+        print("Updating taxon data for " + dataType.dbCollection + "...")
+        counter = 0
+        for line in data:
+            if (firstLine):
+                firstLine = False
+                continue
+            if (counter % 10000 == 0):
+                print("Updating line " + str(counter) + "...")
+            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+            taxon = comps[1]
+            update = {"$set": {"taxon": taxon }}
             response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
