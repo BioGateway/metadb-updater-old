@@ -27,8 +27,6 @@ class DataType:
 
 print('Loading data...')
 
-print(mbdb.list_collection_names())
-
 dataTypes = [
     DataType("prot", "prot", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True),
     DataType("gene", "gene", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True, True),
@@ -44,6 +42,10 @@ dataTypes = [
 if (len(sys.argv) > 3):
     type = sys.argv[3]
     dataTypes = list(filter(lambda x: x.dbCollection == type, dataTypes))
+
+print("Updating: "+dataTypes)
+print("Database collections:" + mbdb.list_collection_names())
+
 
 for dataType in dataTypes:
     print("Downloading label and description data for " + dataType.dbCollection + "...")
