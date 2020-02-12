@@ -44,8 +44,9 @@ if (len(sys.argv) > 3):
     dataTypes = list(filter(lambda x: x.dbCollection == type, dataTypes))
 
 print("Updating:")
-print(*dataTypes, sep = "\n")
-print("Database collections:" + mbdb.list_collection_names())
+print(dataTypes)
+print("Database collections:")
+print(mbdb.list_collection_names())
 
 
 for dataType in dataTypes:
