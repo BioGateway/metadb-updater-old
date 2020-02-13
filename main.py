@@ -135,7 +135,7 @@ for dataType in dataTypes:
                 firstLine = False
                 continue
             if (counter % 10000 == 0):
-                print("Updating line " + str(counter) + "...")
+                print(timestamp()+"Updating line " + str(counter) + "...")
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             taxon = comps[1]
             update = {"$set": {"taxon": taxon}}
