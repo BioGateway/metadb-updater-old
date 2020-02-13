@@ -11,16 +11,29 @@ from query_generators import *
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
-print("\n\n" + timestamp()+ " STARTING METADATABASE UPDATER \n\n")
-print(timestamp()+"Updater tool for downloading and caching the BioGateway metadatabase.")
-print(timestamp()+"Parameters: <port> <db-name> (Optional)<datatype>")
+
+if (len(sys.argv) < 3):
+    print(timestamp()+" Invalid arguments.")
+    print(timestamp() + " Parameters: <port> <db-name> (Optional)<datatype>")
+    exit(-1)
 
 port = sys.argv[1]
 dbName = sys.argv[2]
 
+startTime = time.time()
+headerText = """
+%s          -------------------           METADATABASE UPDATER          -------------------
+%s                Updater tool for downloading and caching the BioGateway metadatabase.    
+%s                Parameters: <port> <db-name> (Optional)<datatype>                        
+%s                Connecting to endpoint on port:   %s
+%s                Updating database:                %s
+%s          -------------------------------------------------------------------------------
+""" % (timestamp(), timestamp(), timestamp(), timestamp(), port, timestamp(), dbName, timestamp())
+
 mbclient = pymongo.MongoClient("mongodb://localhost:27017/")
 mbdb = mbclient[dbName]
 
+print(headerText)
 
 @dataclass
 class DataType:
@@ -143,5 +156,10 @@ for dataType in dataTypes:
 
             counter += 1
 
-# query = generate_field_query("go", "rdf:label", constraint)
-# query = generate_name_label_query("prot", "")
+    durationTime = time.time() - startTime
+    completionText = """
+    %s          -------------------            UPDATE COMPLETE              -------------------
+    %s                Update completed in %s
+    %s          -------------------------------------------------------------------------------
+    """ % (timestamp(), timestamp(), time.strftime("%H:%M:%S", time.gmtime(durationTime)), timestamp())
+    print(completionText)
