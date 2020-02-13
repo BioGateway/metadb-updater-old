@@ -11,7 +11,7 @@ from query_generators import *
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
-print("\n\n " + timestamp()+ " STARTING METADATABASE UPDATER \n\n")
+print("\n\n" + timestamp()+ " STARTING METADATABASE UPDATER \n\n")
 print(timestamp()+"Updater tool for downloading and caching the BioGateway metadatabase.")
 print(timestamp()+"Parameters: <port> <db-name> (Optional)<datatype>")
 
@@ -31,7 +31,7 @@ class DataType:
     taxon: bool = False
 
 
-print(timestamp()+'Loading data...')
+print(timestamp()+'Loading data into ' + dbName + ' using port ' + port + '...')
 
 dataTypes = [
     DataType("prot", "prot", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True),
