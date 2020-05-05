@@ -108,7 +108,7 @@ for dataType in dataTypes:
                 firstLine = False
                 continue
             if (counter % 10000 == 0):
-                print("Updating line " + str(counter) + "...")
+                print(timestamp()+"Updating line " + str(counter) + "...")
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
             response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
