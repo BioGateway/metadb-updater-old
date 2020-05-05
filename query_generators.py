@@ -86,6 +86,5 @@ def generate_GO_namespace_constraint(namespace):
                  + namespace + "\" ^^<http://www.w3.org/2001/XMLSchema#string> ."
     return constraint
 
-def generateUrl(port, query):
-    baseUrl = "http://endpoint.biogateway.eu:" + port + "/sparql"
+def generateUrl(baseUrl, query):
     return baseUrl + "?query=" + urllib.parse.quote(query) + "&format=text%2Ftab-separated-values&timeout=0"
