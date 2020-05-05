@@ -87,4 +87,4 @@ def generate_GO_namespace_constraint(namespace):
     return constraint
 
 def generateUrl(baseUrl, query):
-    return "http://" + baseUrl + "?query=" + urllib.parse.quote(query) + "&format=text%2Ftab-separated-values&timeout=0"
+    return "http://" + baseUrl + "/sparql/" + "?query=" + urllib.parse.quote(query) + "&format=text%2Ftab-separated-values&timeout=0"
