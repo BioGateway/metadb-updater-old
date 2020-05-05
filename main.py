@@ -24,8 +24,8 @@ startTime = time.time()
 headerText = """
 %s          -------------------           METADATABASE UPDATER          -------------------
 %s                Updater tool for downloading and caching the BioGateway metadatabase.    
-%s                Parameters: <url:port> <db-name> (Optional)<datatype> (Optional)<fieldType>  
-%s                Connecting to endpoint on url:    %s
+%s                Parameters: <hostname:port> <db-name> (Optional)<datatype> (Optional)<fieldType>  
+%s                Connecting to endpoint on:        %s
 %s                Updating database:                %s
 %s          -------------------------------------------------------------------------------
 """ % (timestamp(), timestamp(), timestamp(), timestamp(), baseUrl, timestamp(), dbName, timestamp())
