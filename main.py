@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import urllib.request
 import time
 import pymongo
 import sys
@@ -42,9 +43,19 @@ mbdb = mbclient[dbName]
 print(headerText)
 
 @dataclass
+class DatabaseCollection:
+    name: str
+    prefix: str = ""
+
+    def get_reference(self):
+        return mbdb[self.name]
+    reference = property(get_reference)
+
+
+@dataclass
 class DataType:
     graph: str
-    dbCollections: [str]
+    dbCollections: [DatabaseCollection]
     constraint: str
     labels: bool
     scores: bool
@@ -55,15 +66,15 @@ class DataType:
 print(timestamp() +'Loading data into ' + dbName + ' using port ' + baseUrl + '...')
 
 dataTypes = [
-    DataType("prot", ["prot"], "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True, True, True),
-    DataType("gene", ["gene"], "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True, True, True, True),
-    DataType("omim", ["omim"], "", True, True),
-    DataType("go", ["gobp", "goall"], generate_GO_namespace_constraint("biological_process"), True, True),
-    DataType("go", ["gocc", "goall"], generate_GO_namespace_constraint("cellular_component"), True, True),
-    DataType("go", ["gomf", "goall"], generate_GO_namespace_constraint("molecular_function"), True, True),
-    DataType("prot2prot", ["prot2prot"], "", True, False, False, True),
-    DataType("prot2onto", ["prot2onto"], "", True, False),
-    DataType("tfac2gene", ["tfac2gene"], "", True, False)
+    DataType("prot", [DatabaseCollection("prot")], "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True, True, True),
+    DataType("gene", [DatabaseCollection("gene")], "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True, True, True, True),
+    DataType("omim", [DatabaseCollection("omim")], "", True, True),
+    DataType("go", [DatabaseCollection("gobp"), DatabaseCollection("goall", "Biological Process")], generate_GO_namespace_constraint("biological_process"), True, True),
+    DataType("go", [DatabaseCollection("gocc"), DatabaseCollection("goall", "Cellular Component")], generate_GO_namespace_constraint("cellular_component"), True, True),
+    DataType("go", [DatabaseCollection("gomf"), DatabaseCollection("goall", "Molecular Function")], generate_GO_namespace_constraint("molecular_function"), True, True),
+    DataType("prot2prot", [DatabaseCollection("prot2prot")], "", True, False, False, True),
+    DataType("prot2onto", [DatabaseCollection("prot2onto")], "", True, False),
+    DataType("tfac2gene", [DatabaseCollection("tfac2gene")], "", True, False)
 ]
 
 limitToDatatype = args.datatype
@@ -102,10 +113,6 @@ print(timestamp()+"Database collections:")
 print(mbdb.list_collection_names())
 
 for dataType in dataTypes:
-    dbCols = []
-    for collection in dataType.dbCollections:
-        dbCol = mbdb[collection]
-        dbCols.append(dbCol)
 
     if (dataType.labels):
         print(timestamp()+"Downloading label and description data for " + dataType.graph + "...")
@@ -122,9 +129,13 @@ for dataType in dataTypes:
             if (counter % 10000 == 0):
                 print(timestamp()+"Updating line " + str(counter) + "...")
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
-            for dbCol in dbCols:
-                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for collection in dataType.dbCollections:
+                if collection.prefix:
+                    definition = collection.prefix + comps[2]
+                    update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
+                else:
+                    update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
+                response = collection.reference.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
@@ -144,8 +155,8 @@ for dataType in dataTypes:
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             synonym = comps[1]
             update = {"$addToSet": {"synonyms": synonym}}
-            for dbCol in dbCols:
-                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dataType.dbCollections:
+                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
@@ -169,8 +180,8 @@ for dataType in dataTypes:
             toScore = int(comps[2])
             refScore = fromScore + toScore
             update = {"$set": {"refScore": refScore, "toScore": toScore, "fromScore": fromScore}}
-            for dbCol in dbCols:
-                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dataType.dbCollections:
+                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
@@ -192,8 +203,8 @@ for dataType in dataTypes:
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             taxon = comps[1]
             update = {"$set": {"taxon": taxon}}
-            for dbCol in dbCols:
-                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dataType.dbCollections:
+                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
@@ -215,8 +226,8 @@ for dataType in dataTypes:
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             instance = comps[1]
             update =  {"$addToSet": {"instances": instance}}
-            for dbCol in dbCols:
-                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dataType.dbCollections:
+                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
