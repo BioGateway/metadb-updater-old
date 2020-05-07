@@ -23,6 +23,7 @@ baseUrl = sys.argv[1]
 dbName = sys.argv[2]
 
 startTime = time.time()
+lastStartTime = startTime
 headerText = """
 %s          -------------------           METADATABASE UPDATER          -------------------
 %s                Updater tool for downloading and caching the BioGateway metadatabase.    
@@ -214,10 +215,12 @@ for dataType in dataTypes:
 
             counter += 1
 
-    durationTime = time.time() - startTime
+    durationTime = time.time() - lastStartTime
+    totalDurationTime = time.time() - startTime
+    lastStartTime = time.time()
     completionText = """
     %s          -------------------            UPDATE COMPLETE              -------------------
-    %s                Update completed in %s
+    %s                Update completed in %s, %s total.
     %s          -------------------------------------------------------------------------------
-    """ % (timestamp(), timestamp(), time.strftime("%H:%M:%S", time.gmtime(durationTime)), timestamp())
+    """ % (timestamp(), timestamp(), time.strftime("%H:%M:%S", time.gmtime(durationTime)), time.strftime("%H:%M:%S", time.gmtime(totalDurationTime)), timestamp())
     print(completionText)
