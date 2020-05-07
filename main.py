@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from query_generators import *
 from enum import Enum
 
+TESTING_QUERIES = False
+
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
@@ -37,8 +39,8 @@ print(headerText)
 
 @dataclass
 class DataType:
-    dbCollection: str
     graph: str
+    dbCollections: [str]
     constraint: str
     labels: bool
     scores: bool
@@ -49,20 +51,20 @@ class DataType:
 print(timestamp() +'Loading data into ' + dbName + ' using port ' + baseUrl + '...')
 
 dataTypes = [
-    DataType("prot", "prot", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True, True, True),
-    DataType("gene", "gene", "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True, True, True, True),
-    DataType("omim", "omim", "", True, True),
-    DataType("gobp", "go", generate_GO_namespace_constraint("biological_process"), True, True),
-    DataType("gocc", "go", generate_GO_namespace_constraint("cellular_component"), True, True),
-    DataType("gomf", "go", generate_GO_namespace_constraint("molecular_function"), True, True),
-    DataType("prot2prot", "prot2prot", "", True, False, False, True),
-    DataType("prot2onto", "prot2onto", "", True, False),
-    DataType("tfac2gene", "tfac2gene", "", True, False)
+    DataType("prot", ["prot"], "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010043> .", True, True, True, True),
+    DataType("gene", ["gene"], "?uri rdfs:subClassOf <http://semanticscience.org/resource/SIO_010035> .", True, True, True, True),
+    DataType("omim", ["omim"], "", True, True),
+    DataType("go", ["gobp", "goall"], generate_GO_namespace_constraint("biological_process"), True, True),
+    DataType("go", ["gocc", "goall"], generate_GO_namespace_constraint("cellular_component"), True, True),
+    DataType("go", ["gomf", "goall"], generate_GO_namespace_constraint("molecular_function"), True, True),
+    DataType("prot2prot", ["prot2prot"], "", True, False, False, True),
+    DataType("prot2onto", ["prot2onto"], "", True, False),
+    DataType("tfac2gene", ["tfac2gene"], "", True, False)
 ]
 
 if (len(sys.argv) > 3):
     type = sys.argv[3]
-    dataTypes = list(filter(lambda x: x.dbCollection == type, dataTypes))
+    dataTypes = list(filter(lambda x: x.graph == type, dataTypes))
     if (len(sys.argv) > 4):
         fieldType = sys.argv[4]
         dataType = dataTypes[0]
@@ -94,14 +96,18 @@ print(timestamp()+"Database collections:")
 print(mbdb.list_collection_names())
 
 for dataType in dataTypes:
+    dbCols = []
+    for collection in dataType.dbCollections:
+        dbCol = mbdb[collection]
+        dbCols.append(dbCol)
+
     if (dataType.labels):
-        print(timestamp()+"Downloading label and description data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Downloading label and description data for " + dataType.graph + "...")
         query = generate_name_label_query(dataType.graph, dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query))
-        dbCol = mbdb[dataType.dbCollection]
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
 
         firstLine = True
-        print(timestamp()+"Updating data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Updating data for " + dataType.graph + "...")
         counter = 0
         for line in data:
             if (firstLine):
@@ -111,17 +117,17 @@ for dataType in dataTypes:
                 print(timestamp()+"Updating line " + str(counter) + "...")
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
-            response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dbCols:
+                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
-        print(timestamp()+"Downloading synonym data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Downloading synonym data for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query))
-        dbCol = mbdb[dataType.dbCollection]
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
 
         firstLine = True
-        print(timestamp()+"Updating data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Updating data for " + dataType.graph + "...")
         counter = 0
         for line in data:
             if (firstLine):
@@ -132,19 +138,19 @@ for dataType in dataTypes:
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             synonym = comps[1]
             update = {"$addToSet": {"synonyms": synonym}}
-            response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dbCols:
+                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
     if (dataType.scores):
 
-        print(timestamp()+"Downloading scores for " + dataType.dbCollection + "...")
+        print(timestamp()+"Downloading scores for " + dataType.graph + "...")
         query = generate_scores_query(dataType.graph, dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query))
-        dbCol = mbdb[dataType.dbCollection]
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
 
         firstLine = True
-        print(timestamp()+"Updating score data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Updating score data for " + dataType.graph + "...")
         counter = 0
         for line in data:
             if (firstLine):
@@ -157,19 +163,19 @@ for dataType in dataTypes:
             toScore = int(comps[2])
             refScore = fromScore + toScore
             update = {"$set": {"refScore": refScore, "toScore": toScore, "fromScore": fromScore}}
-            response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dbCols:
+                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
     if (dataType.taxon):
-        print(timestamp()+"Downloading taxa data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Downloading taxa data for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
                                      dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query))
-        dbCol = mbdb[dataType.dbCollection]
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
 
         firstLine = True
-        print(timestamp()+"Updating taxon data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Updating taxon data for " + dataType.graph + "...")
         counter = 0
         for line in data:
             if (firstLine):
@@ -180,19 +186,19 @@ for dataType in dataTypes:
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             taxon = comps[1]
             update = {"$set": {"taxon": taxon}}
-            response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dbCols:
+                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
     if (dataType.instances):
-        print(timestamp()+"Downloading instance data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Downloading instance data for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
                                      dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query))
-        dbCol = mbdb[dataType.dbCollection]
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
 
         firstLine = True
-        print(timestamp()+"Updating instance data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Updating instance data for " + dataType.graph + "...")
         counter = 0
         for line in data:
             if (firstLine):
@@ -203,7 +209,8 @@ for dataType in dataTypes:
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             instance = comps[1]
             update =  {"$addToSet": {"instances": instance}}
-            response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
+            for dbCol in dbCols:
+                response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
 
