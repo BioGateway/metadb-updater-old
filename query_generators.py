@@ -86,5 +86,7 @@ def generate_GO_namespace_constraint(namespace):
                  + namespace + "\" ^^<http://www.w3.org/2001/XMLSchema#string> ."
     return constraint
 
-def generateUrl(baseUrl, query):
+def generateUrl(baseUrl, query, testing):
+    if testing:
+        query += "\nLIMIT 10000"
     return "http://" + baseUrl + "/sparql/" + "?query=" + urllib.parse.quote(query) + "&format=text%2Ftab-separated-values&timeout=0"
