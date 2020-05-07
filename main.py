@@ -115,7 +115,7 @@ for dataType in dataTypes:
 
             counter += 1
 
-        print(timestamp()+"Downloading altLabel data for " + dataType.dbCollection + "...")
+        print(timestamp()+"Downloading synonym data for " + dataType.dbCollection + "...")
         query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
         data = urllib.request.urlopen(generateUrl(baseUrl, query))
         dbCol = mbdb[dataType.dbCollection]
@@ -130,7 +130,8 @@ for dataType in dataTypes:
             if (counter % 10000 == 0):
                 print(timestamp()+"Updating line " + str(counter) + "...")
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            update = {"$set": {"altLabel": comps[1]}}
+            synonym = comps[1]
+            update = {"$addToSet": {"synonyms": synonym}}
             response = dbCol.update_one({"_id": comps[0]}, update, upsert=True)
 
             counter += 1
