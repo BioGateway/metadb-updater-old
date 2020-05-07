@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
-import urllib.request
-import urllib.parse
+import argparse
 import time
 import pymongo
 import sys
 from dataclasses import dataclass
 from query_generators import *
-from enum import Enum
-
-TESTING_QUERIES = False
 
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
+parser = argparse.ArgumentParser(description='Update the BioGateway Metadata Cache with new data from the SPARQL endpoint.')
+parser.add_argument('hostname', metavar='hostname', type=str, help='The hostname of the BioGateway SPARQL endpoint to be loaded from.')
+parser.add_argument('port', metavar='port', type=str, help='The port of the BioGateway SPARQL endpoint to be loaded from.')
+parser.add_argument('dbName', metavar='db-name', type=str, help='The MongoDB database to store the cached data')
+parser.add_argument('--datatype', type=str, help='Limit update to this data type.')
+parser.add_argument('--field', type=str, help='Limit update to this field type.')
+parser.add_argument('--mode', type=str, help='Can be used to specify run modes for testing.')
 
-if (len(sys.argv) < 3):
-    print(timestamp()+" Invalid arguments.")
-    print(timestamp() + " Parameters: <port> <db-name> (Optional)<datatype> (Optional)<fieldType>")
-    exit(-1)
 
-baseUrl = sys.argv[1]
-dbName = sys.argv[2]
+args = parser.parse_args()
+
+baseUrl = args.hostname+":"+args.port
+dbName = args.dbName
+
+TESTING_QUERIES = (args.mode == 'testing')
 
 startTime = time.time()
 lastStartTime = startTime
@@ -63,33 +66,35 @@ dataTypes = [
     DataType("tfac2gene", ["tfac2gene"], "", True, False)
 ]
 
-if (len(sys.argv) > 3):
-    type = sys.argv[3]
-    dataTypes = list(filter(lambda x: x.graph == type, dataTypes))
-    if (len(sys.argv) > 4):
-        fieldType = sys.argv[4]
-        dataType = dataTypes[0]
-        if fieldType == "label":
+limitToDatatype = args.datatype
+limitToFieldType = args.field
+
+
+if (limitToDatatype):
+    dataTypes = list(filter(lambda x: x.graph == limitToDatatype, dataTypes))
+
+if limitToFieldType:
+    for dataType in dataTypes:
+        if limitToFieldType == "label":
             dataType.labels = True
             dataType.scores = False
             dataType.taxon = False
             dataType.instances = False
-        if fieldType == "scores":
+        if limitToFieldType == "scores":
             dataType.labels = False
             dataType.scores = True
             dataType.taxon = False
             dataType.instances = False
-        if fieldType == "taxon":
+        if limitToFieldType == "taxon":
             dataType.labels = False
             dataType.scores = False
             dataType.taxon = True
             dataType.instances = False
-        if fieldType == "instances":
+        if limitToFieldType == "instances":
             dataType.labels = False
             dataType.scores = False
             dataType.taxon = False
             dataType.instances = True
-
 
 print(timestamp()+"Updating:")
 print(*dataTypes, sep="\n")
