@@ -220,7 +220,7 @@ for dataType in dataTypes:
     lastStartTime = time.time()
     completionText = """
     %s          -------------------            UPDATE COMPLETE              -------------------
-    %s                Update completed in %s, %s total.
+    %s                Updating %s completed in %s, %s total.
     %s          -------------------------------------------------------------------------------
-    """ % (timestamp(), timestamp(), time.strftime("%H:%M:%S", time.gmtime(durationTime)), time.strftime("%H:%M:%S", time.gmtime(totalDurationTime)), timestamp())
+    """ % (timestamp(), timestamp(), dataType.graph, time.strftime("%H:%M:%S", time.gmtime(durationTime)), time.strftime("%H:%M:%S", time.gmtime(totalDurationTime)), timestamp())
     print(completionText)
