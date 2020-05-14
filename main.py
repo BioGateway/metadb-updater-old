@@ -117,7 +117,8 @@ for dataType in dataTypes:
     if (dataType.labels):
         print(timestamp()+"Downloading label and description data for " + dataType.graph + "...")
         query = generate_name_label_query(dataType.graph, dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
+        url = generateUrl(baseUrl, query, TESTING_QUERIES)
+        data = urllib.request.urlopen(url)
 
         firstLine = True
         print(timestamp()+"Updating data for " + dataType.graph + "...")
@@ -154,7 +155,7 @@ for dataType in dataTypes:
                 print(timestamp()+"Updating line " + str(counter) + "...")
             comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
             synonym = comps[1]
-            update = {"$addToSet": {"synonyms": synonym}}
+            update = {"$addToSet": {"synonyms": synonym, "lcSynonyms": synonym.lower()}}
             for dbCol in dataType.dbCollections:
                 response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
 
