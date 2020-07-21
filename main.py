@@ -11,7 +11,6 @@ from query_generators import *
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
-
 parser = argparse.ArgumentParser(
     description='Update the BioGateway Metadata Cache with new data from the SPARQL endpoint.')
 parser.add_argument('hostname', metavar='hostname', type=str,
@@ -21,14 +20,14 @@ parser.add_argument('port', metavar='port', type=str,
 parser.add_argument('dbName', metavar='db-name', type=str, help='The MongoDB database to store the cached data')
 parser.add_argument('--datatype', type=str, help='Limit update to this data type.')
 parser.add_argument('--field', type=str, help='Limit update to this field type.')
-parser.add_argument('--mode', type=str, help='Can be used to specify run modes for testing.')
-
+parser.add_argument('--testing', default=False, dest='testing', action='store_true', help='Testing mode only loads the first 10000 entries of each data type.')
+parser.add_argument('--wipe', default=False, dest='wipe', action='store_true', help='Wipe all data from the database before updating.')
 args = parser.parse_args()
 
 baseUrl = args.hostname + ":" + args.port
 dbName = args.dbName
-
-TESTING_QUERIES = (args.mode == 'testing')
+wipeData = args.wipe
+testingMode = args.testing
 
 startTime = time.time()
 lastStartTime = startTime
@@ -130,11 +129,15 @@ print(timestamp() + "Database collections:")
 print(mbdb.list_collection_names())
 
 for dataType in dataTypes:
+    if wipeData:
+        for collection in dataType.dbCollections:
+            print("Wiping collection: " + collection.name)
+            collection.reference.delete_many({})
 
     if dataType.labels:
         print(timestamp() + "Downloading label and description data for " + dataType.graph + "...")
         query = generate_name_label_query(dataType.graph, dataType.constraint)
-        url = generateUrl(baseUrl, query, TESTING_QUERIES)
+        url = generateUrl(baseUrl, query, testingMode)
         data = urllib.request.urlopen(url)
 
         firstLine = True
@@ -159,7 +162,7 @@ for dataType in dataTypes:
 
         print(timestamp() + "Downloading synonym data for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
         firstLine = True
         print(timestamp() + "Updating data for " + dataType.graph + "...")
@@ -182,7 +185,7 @@ for dataType in dataTypes:
 
         print(timestamp() + "Downloading scores for " + dataType.graph + "...")
         query = generate_scores_query(dataType.graph, dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
         firstLine = True
         print(timestamp() + "Updating score data for " + dataType.graph + "...")
@@ -207,7 +210,7 @@ for dataType in dataTypes:
         print(timestamp() + "Downloading taxa data for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
                                      dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
         firstLine = True
         print(timestamp() + "Updating taxon data for " + dataType.graph + "...")
@@ -230,7 +233,7 @@ for dataType in dataTypes:
         print(timestamp() + "Downloading instance data for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
                                      dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
         firstLine = True
         print(timestamp() + "Updating instance data for " + dataType.graph + "...")
@@ -253,7 +256,7 @@ for dataType in dataTypes:
         print(timestamp() + "Downloading annotation scores for " + dataType.graph + "...")
         query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
                                      dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, TESTING_QUERIES))
+        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
         firstLine = True
         print(timestamp() + "Updating annotation scores for " + dataType.graph + "...")
