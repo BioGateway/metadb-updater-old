@@ -3,10 +3,13 @@ import argparse
 import urllib.request
 import time
 import pymongo
-import sys
+import threading
+import logging
 from dataclasses import dataclass
 from query_generators import *
 
+format = "%(asctime)s: %(message)s"
+logging.basicConfig(format=format, level=logging.INFO, datefmt="%H:%M:%S")
 
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
@@ -22,15 +25,16 @@ parser.add_argument('--datatype', type=str, help='Limit update to this data type
 parser.add_argument('--field', type=str, help='Limit update to this field type.')
 parser.add_argument('--testing', default=False, dest='testing', action='store_true', help='Testing mode only loads the first 10000 entries of each data type.')
 parser.add_argument('--wipe', default=False, dest='wipe', action='store_true', help='Wipe all data from the database before updating.')
+parser.add_argument('--parallel', default=False, dest='parallel', action='store_true', help='Run in parallel. This might cause instabilities.')
+
 args = parser.parse_args()
 
 baseUrl = args.hostname + ":" + args.port
 dbName = args.dbName
 wipeData = args.wipe
 testingMode = args.testing
+parallel = args.parallel
 
-startTime = time.time()
-lastStartTime = startTime
 headerText = """
 %s          -------------------           METADATABASE UPDATER          -------------------
 %s                Updater tool for downloading and caching the BioGateway metadatabase.    
@@ -69,7 +73,7 @@ class DataType:
     annotationScores: bool = False
 
 
-print(timestamp() + 'Loading data into ' + dbName + ' using port ' + baseUrl + '...')
+logging.info('Loading data into ' + dbName + ' using port ' + baseUrl + '...')
 
 dataTypes = [
     DataType("prot", [DatabaseCollection("prot")],
@@ -123,166 +127,207 @@ if limitToFieldType:
             dataType.instances = False
             dataType.annotationScores = True
 
-print(timestamp() + "Updating:")
+logging.info("Updating:")
 print(*dataTypes, sep="\n")
-print(timestamp() + "Database collections:")
+logging.info("Database collections:")
 print(mbdb.list_collection_names())
 
-for dataType in dataTypes:
+def update_labels(dataType):
+    startTime = time.time()
+    logging.info("Downloading label and description data for " + dataType.graph + "...")
+    query = generate_name_label_query(dataType.graph, dataType.constraint)
+    url = generateUrl(baseUrl, query, testingMode)
+    data = urllib.request.urlopen(url)
+
+    firstLine = True
+    logging.info("Updating data for " + dataType.graph + "...")
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            logging.info(" "+dataType.graph+" updated labels line " + str(counter) + "...")
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        for collection in dataType.dbCollections:
+            if collection.prefix:
+                definition = collection.prefix + comps[2]
+                update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
+            else:
+                update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
+            response = collection.reference.update_one({"_id": comps[0]}, update, upsert=True)
+
+        counter += 1
+
+    logging.info("Downloading synonym data for " + dataType.graph + "...")
+    query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
+    data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
+
+    firstLine = True
+    logging.info("Updating data for " + dataType.graph + "...")
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            logging.info(" "+dataType.graph+" updated synonym line " + str(counter) + "...")
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        synonym = comps[1]
+        update = {"$addToSet": {"synonyms": synonym, "lcSynonyms": synonym.lower()}}
+        for dbCol in dataType.dbCollections:
+            response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
+
+        counter += 1
+
+    durationTime = time.time() - startTime
+    logging.info("Updated "+dataType.graph+" labels in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+
+def update_scores(dataType):
+    startTime = time.time()
+    logging.info("Downloading scores for " + dataType.graph + "...")
+    query = generate_scores_query(dataType.graph, dataType.constraint)
+    data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
+
+    firstLine = True
+    logging.info("Updating score data for " + dataType.graph + "...")
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            logging.info(" "+dataType.graph+" updated score line " + str(counter) + "...")
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        fromScore = int(comps[1])
+        toScore = int(comps[2])
+        refScore = fromScore + toScore
+        update = {"$set": {"refScore": refScore, "toScore": toScore, "fromScore": fromScore}}
+        for dbCol in dataType.dbCollections:
+            response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
+
+        counter += 1
+    durationTime = time.time() - startTime
+    logging.info("Updated "+dataType.graph+" scores in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+
+def update_taxon(dataType):
+    startTime = time.time()
+    logging.info("Downloading taxa data for " + dataType.graph + "...")
+    query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
+                                 dataType.constraint)
+    data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
+
+    firstLine = True
+    logging.info("Updating taxon data for " + dataType.graph + "...")
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            logging.info(" "+dataType.graph+" updated taxon line " + str(counter) + "...")
+
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        taxon = comps[1]
+        update = {"$set": {"taxon": taxon}}
+        for dbCol in dataType.dbCollections:
+            response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
+
+        counter += 1
+    durationTime = time.time() - startTime
+    logging.info("Updated "+dataType.graph+" taxa in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+
+def update_instances(dataType):
+    startTime = time.time()
+    logging.info("Downloading instance data for " + dataType.graph + "...")
+    query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
+                                 dataType.constraint)
+    data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
+
+    firstLine = True
+    logging.info("Updating instance data for " + dataType.graph + "...")
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            logging.info(" "+dataType.graph+" updated instance data line " + str(counter) + "...")
+
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        instance = comps[1]
+        update = {"$addToSet": {"instances": instance}}
+        for dbCol in dataType.dbCollections:
+            response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
+
+        counter += 1
+    durationTime = time.time() - startTime
+    logging.info("Updated "+dataType.graph+" instances in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+
+
+def update_annotationScore(dataType):
+    startTime = time.time()
+    logging.info("Downloading annotation scores for " + dataType.graph + "...")
+    query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
+                                 dataType.constraint)
+    data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
+
+    firstLine = True
+    logging.info("Updating annotation scores for " + dataType.graph + "...")
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            logging.info(" "+dataType.graph+" updated annotation scores line " + str(counter) + "...")
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        score = int(comps[1])
+        update = {"$set": {"annotationScore": score}}
+        for dbCol in dataType.dbCollections:
+            response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
+
+        counter += 1
+    durationTime = time.time() - startTime
+    logging.info("Updated "+dataType.graph+" annotationScores in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+
+def update_dataType(dataType):
+    startTime = time.time()
     if wipeData:
         for collection in dataType.dbCollections:
             print("Wiping collection: " + collection.name)
             collection.reference.delete_many({})
 
     if dataType.labels:
-        print(timestamp() + "Downloading label and description data for " + dataType.graph + "...")
-        query = generate_name_label_query(dataType.graph, dataType.constraint)
-        url = generateUrl(baseUrl, query, testingMode)
-        data = urllib.request.urlopen(url)
-
-        firstLine = True
-        print(timestamp() + "Updating data for " + dataType.graph + "...")
-        counter = 0
-        for line in data:
-            if firstLine:
-                firstLine = False
-                continue
-            if counter % 10000 == 0:
-                print(timestamp() + "Updating line " + str(counter) + "...")
-            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            for collection in dataType.dbCollections:
-                if collection.prefix:
-                    definition = collection.prefix + comps[2]
-                    update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
-                else:
-                    update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
-                response = collection.reference.update_one({"_id": comps[0]}, update, upsert=True)
-
-            counter += 1
-
-        print(timestamp() + "Downloading synonym data for " + dataType.graph + "...")
-        query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
-
-        firstLine = True
-        print(timestamp() + "Updating data for " + dataType.graph + "...")
-        counter = 0
-        for line in data:
-            if firstLine:
-                firstLine = False
-                continue
-            if counter % 10000 == 0:
-                print(timestamp() + "Updating line " + str(counter) + "...")
-            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            synonym = comps[1]
-            update = {"$addToSet": {"synonyms": synonym, "lcSynonyms": synonym.lower()}}
-            for dbCol in dataType.dbCollections:
-                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
-
-            counter += 1
+        if parallel:
+            threading.Thread(target=update_labels, args=(dataType,)).start()
+        else:
+            update_labels(dataType)
 
     if dataType.scores:
-
-        print(timestamp() + "Downloading scores for " + dataType.graph + "...")
-        query = generate_scores_query(dataType.graph, dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
-
-        firstLine = True
-        print(timestamp() + "Updating score data for " + dataType.graph + "...")
-        counter = 0
-        for line in data:
-            if firstLine:
-                firstLine = False
-                continue
-            if counter % 10000 == 0:
-                print("Updating line " + str(counter) + "...")
-            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            fromScore = int(comps[1])
-            toScore = int(comps[2])
-            refScore = fromScore + toScore
-            update = {"$set": {"refScore": refScore, "toScore": toScore, "fromScore": fromScore}}
-            for dbCol in dataType.dbCollections:
-                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
-
-            counter += 1
+        if parallel:
+            threading.Thread(target=update_scores, args=(dataType,)).start()
+        else:
+            update_scores(dataType)
 
     if dataType.taxon:
-        print(timestamp() + "Downloading taxa data for " + dataType.graph + "...")
-        query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
-                                     dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
-
-        firstLine = True
-        print(timestamp() + "Updating taxon data for " + dataType.graph + "...")
-        counter = 0
-        for line in data:
-            if firstLine:
-                firstLine = False
-                continue
-            if counter % 10000 == 0:
-                print(timestamp() + "Updating line " + str(counter) + "...")
-            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            taxon = comps[1]
-            update = {"$set": {"taxon": taxon}}
-            for dbCol in dataType.dbCollections:
-                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
-
-            counter += 1
+        if parallel:
+            threading.Thread(target=update_taxon, args=(dataType,)).start()
+        else:
+            update_taxon(dataType)
 
     if dataType.instances:
-        print(timestamp() + "Downloading instance data for " + dataType.graph + "...")
-        query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
-                                     dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
-
-        firstLine = True
-        print(timestamp() + "Updating instance data for " + dataType.graph + "...")
-        counter = 0
-        for line in data:
-            if firstLine:
-                firstLine = False
-                continue
-            if counter % 10000 == 0:
-                print(timestamp() + "Updating line " + str(counter) + "...")
-            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            instance = comps[1]
-            update = {"$addToSet": {"instances": instance}}
-            for dbCol in dataType.dbCollections:
-                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
-
-            counter += 1
+        if parallel:
+            threading.Thread(target=update_instances, args=(dataType,)).start()
+        else:
+            update_instances(dataType)
 
     if dataType.annotationScores:
-        print(timestamp() + "Downloading annotation scores for " + dataType.graph + "...")
-        query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
-                                     dataType.constraint)
-        data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
-
-        firstLine = True
-        print(timestamp() + "Updating annotation scores for " + dataType.graph + "...")
-        counter = 0
-        for line in data:
-            if firstLine:
-                firstLine = False
-                continue
-            if counter % 10000 == 0:
-                print(timestamp() + "Updating line " + str(counter) + "...")
-            comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-            score = int(comps[1])
-            update = {"$set": {"annotationScore": score}}
-            for dbCol in dataType.dbCollections:
-                response = dbCol.reference.update_one({"_id": comps[0]}, update, upsert=True)
-
-            counter += 1
+        if parallel:
+            threading.Thread(target=update_annotationScore, args=(dataType,)).start()
+        else:
+            update_annotationScore(dataType)
 
 
-    durationTime = time.time() - lastStartTime
-    totalDurationTime = time.time() - startTime
-    lastStartTime = time.time()
-    completionText = """
-    %s          -------------------            UPDATE COMPLETE              -------------------
-    %s                Updating %s completed in %s, %s total.
-    %s          -------------------------------------------------------------------------------
-    """ % (timestamp(), timestamp(), dataType.graph, time.strftime("%H:%M:%S", time.gmtime(durationTime)),
-           time.strftime("%H:%M:%S", time.gmtime(totalDurationTime)), timestamp())
-    print(completionText)
+for dataType in dataTypes:
+    update_dataType(dataType)
