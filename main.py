@@ -74,7 +74,7 @@ class DataType:
     annotationScores: bool = False
 
 
-logging.info('Loading data into ' + dbName + ' using port ' + baseUrl + '...')
+print(timestamp() + 'Loading data into ' + dbName + ' using port ' + baseUrl + '...')
 
 dataTypes = [
     DataType("prot", [DatabaseCollection("prot")],
@@ -128,27 +128,27 @@ if limitToFieldType:
             dataType.instances = False
             dataType.annotationScores = True
 
-logging.info("Updating:")
+print(timestamp() + "Updating:")
 print(*dataTypes, sep="\n")
-logging.info("Database collections:")
+print(timestamp() + "Database collections:")
 print(mbdb.list_collection_names())
 
 def update_labels(dataType):
     startTime = time.time()
-    logging.info("Downloading label and description data for " + dataType.graph + "...")
+    print(timestamp() + "Downloading label and description data for " + dataType.graph + "...")
     query = generate_name_label_query(dataType.graph, dataType.constraint)
     url = generateUrl(baseUrl, query, testingMode)
     data = urllib.request.urlopen(url)
 
     firstLine = True
-    logging.info("Updating data for " + dataType.graph + "...")
+    print(timestamp() + "Updating data for " + dataType.graph + "...")
     counter = 0
     for line in data:
         if firstLine:
             firstLine = False
             continue
         if counter % 10000 == 0:
-            logging.info(" "+dataType.graph+" updated labels line " + str(counter) + "...")
+            print(timestamp() + " "+dataType.graph+" updated labels line " + str(counter) + "...")
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         for collection in dataType.dbCollections:
             if collection.prefix:
@@ -160,19 +160,19 @@ def update_labels(dataType):
 
         counter += 1
 
-    logging.info("Downloading synonym data for " + dataType.graph + "...")
+    print(timestamp() + "Downloading synonym data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
     data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
     firstLine = True
-    logging.info("Updating data for " + dataType.graph + "...")
+    print(timestamp() + "Updating data for " + dataType.graph + "...")
     counter = 0
     for line in data:
         if firstLine:
             firstLine = False
             continue
         if counter % 10000 == 0:
-            logging.info(" "+dataType.graph+" updated synonym line " + str(counter) + "...")
+            print(timestamp() + " "+dataType.graph+" updated synonym line " + str(counter) + "...")
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         synonym = comps[1]
         update = {"$addToSet": {"synonyms": synonym, "lcSynonyms": synonym.lower()}}
@@ -182,23 +182,23 @@ def update_labels(dataType):
         counter += 1
 
     durationTime = time.time() - startTime
-    logging.info("Updated "+dataType.graph+" labels in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+    print(timestamp() + "Updated "+dataType.graph+" labels in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 def update_scores(dataType):
     startTime = time.time()
-    logging.info("Downloading scores for " + dataType.graph + "...")
+    print(timestamp() + "Downloading scores for " + dataType.graph + "...")
     query = generate_scores_query(dataType.graph, dataType.constraint)
     data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
     firstLine = True
-    logging.info("Updating score data for " + dataType.graph + "...")
+    print(timestamp() + "Updating score data for " + dataType.graph + "...")
     counter = 0
     for line in data:
         if firstLine:
             firstLine = False
             continue
         if counter % 10000 == 0:
-            logging.info(" "+dataType.graph+" updated score line " + str(counter) + "...")
+            print(timestamp() + " "+dataType.graph+" updated score line " + str(counter) + "...")
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         fromScore = int(comps[1])
         toScore = int(comps[2])
@@ -209,24 +209,24 @@ def update_scores(dataType):
 
         counter += 1
     durationTime = time.time() - startTime
-    logging.info("Updated "+dataType.graph+" scores in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+    print(timestamp() + "Updated "+dataType.graph+" scores in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 def update_taxon(dataType):
     startTime = time.time()
-    logging.info("Downloading taxa data for " + dataType.graph + "...")
+    print(timestamp() + "Downloading taxa data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
                                  dataType.constraint)
     data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
     firstLine = True
-    logging.info("Updating taxon data for " + dataType.graph + "...")
+    print(timestamp() + "Updating taxon data for " + dataType.graph + "...")
     counter = 0
     for line in data:
         if firstLine:
             firstLine = False
             continue
         if counter % 10000 == 0:
-            logging.info(" "+dataType.graph+" updated taxon line " + str(counter) + "...")
+            print(timestamp() + " "+dataType.graph+" updated taxon line " + str(counter) + "...")
 
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         taxon = comps[1]
@@ -236,24 +236,24 @@ def update_taxon(dataType):
 
         counter += 1
     durationTime = time.time() - startTime
-    logging.info("Updated "+dataType.graph+" taxa in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+    print(timestamp() + "Updated "+dataType.graph+" taxa in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 def update_instances(dataType):
     startTime = time.time()
-    logging.info("Downloading instance data for " + dataType.graph + "...")
+    print(timestamp() + "Downloading instance data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
                                  dataType.constraint)
     data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
     firstLine = True
-    logging.info("Updating instance data for " + dataType.graph + "...")
+    print(timestamp() + "Updating instance data for " + dataType.graph + "...")
     counter = 0
     for line in data:
         if firstLine:
             firstLine = False
             continue
         if counter % 10000 == 0:
-            logging.info(" "+dataType.graph+" updated instance data line " + str(counter) + "...")
+            print(timestamp() + " "+dataType.graph+" updated instance data line " + str(counter) + "...")
 
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         instance = comps[1]
@@ -263,25 +263,25 @@ def update_instances(dataType):
 
         counter += 1
     durationTime = time.time() - startTime
-    logging.info("Updated "+dataType.graph+" instances in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+    print(timestamp() + "Updated "+dataType.graph+" instances in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 
 def update_annotationScore(dataType):
     startTime = time.time()
-    logging.info("Downloading annotation scores for " + dataType.graph + "...")
+    print(timestamp() + "Downloading annotation scores for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
                                  dataType.constraint)
     data = urllib.request.urlopen(generateUrl(baseUrl, query, testingMode))
 
     firstLine = True
-    logging.info("Updating annotation scores for " + dataType.graph + "...")
+    print(timestamp() + "Updating annotation scores for " + dataType.graph + "...")
     counter = 0
     for line in data:
         if firstLine:
             firstLine = False
             continue
         if counter % 10000 == 0:
-            logging.info(" "+dataType.graph+" updated annotation scores line " + str(counter) + "...")
+            print(timestamp() + " "+dataType.graph+" updated annotation scores line " + str(counter) + "...")
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         score = int(comps[1])
         update = {"$set": {"annotationScore": score}}
@@ -290,10 +290,9 @@ def update_annotationScore(dataType):
 
         counter += 1
     durationTime = time.time() - startTime
-    logging.info("Updated "+dataType.graph+" annotationScores in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+    print(timestamp() + "Updated "+dataType.graph+" annotationScores in "+time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 def update_dataType(dataType):
-    startTime = time.time()
     if wipeData:
         for collection in dataType.dbCollections:
             print("Wiping collection: " + collection.name)
