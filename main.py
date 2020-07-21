@@ -41,8 +41,9 @@ headerText = """
 %s                Parameters: <hostname:port> <db-name> (Optional)<datatype> (Optional)<fieldType>  
 %s                Connecting to endpoint on:        %s
 %s                Updating database:                %s
+%s                Parallel:                         %s
 %s          -------------------------------------------------------------------------------
-""" % (timestamp(), timestamp(), timestamp(), timestamp(), baseUrl, timestamp(), dbName, timestamp())
+""" % (timestamp(), timestamp(), timestamp(), timestamp(), baseUrl, timestamp(), dbName, timestamp(), parallel, timestamp())
 
 mbclient = pymongo.MongoClient("mongodb://localhost:27017/")
 mbdb = mbclient[dbName]
