@@ -3,13 +3,14 @@ import argparse
 import urllib.request
 import time
 import pymongo
-import threading
+import multiprocessing as mp
 import logging
 from dataclasses import dataclass
 from query_generators import *
 
 format = "%(asctime)s: %(message)s"
 logging.basicConfig(format=format, level=logging.INFO, datefmt="%H:%M:%S")
+
 
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
@@ -300,31 +301,35 @@ def update_dataType(dataType):
 
     if dataType.labels:
         if parallel:
-            threading.Thread(target=update_labels, args=(dataType,)).start()
+            mp.Process(target=update_labels, args=(dataType,)).start()
         else:
             update_labels(dataType)
 
     if dataType.scores:
         if parallel:
-            threading.Thread(target=update_scores, args=(dataType,)).start()
-        else:
+            print("TODO")
+            mp.Process(target=update_scores, args=(dataType,)).start()
+        # else:
             update_scores(dataType)
 
     if dataType.taxon:
         if parallel:
-            threading.Thread(target=update_taxon, args=(dataType,)).start()
+            print("TODO")
+            mp.Process(target=update_taxon, args=(dataType,)).start()
         else:
             update_taxon(dataType)
 
     if dataType.instances:
         if parallel:
-            threading.Thread(target=update_instances, args=(dataType,)).start()
+            print("TODO")
+            mp.Process(target=update_instances, args=(dataType,)).start()
         else:
             update_instances(dataType)
 
     if dataType.annotationScores:
         if parallel:
-            threading.Thread(target=update_annotationScore, args=(dataType,)).start()
+            print("TODO")
+            mp.Process(target=update_annotationScore, args=(dataType,)).start()
         else:
             update_annotationScore(dataType)
 
