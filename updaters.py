@@ -88,7 +88,9 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
     limit = batchSize if batchSize else context.limit
     url = generateUrl(context.baseUrl, query, limit, offset)
     data = urllib.request.urlopen(url)
-
+    durationTime = time.time() - startTime
+    print(timestamp() + "Downloaded " + dataType.graph + " " + name + " data in " + time.strftime("%H:%M:%S.",
+                                                                                    time.gmtime(durationTime)))
     firstLine = True
     counter = 0
     for line in data:
