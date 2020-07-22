@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import argparse
-import urllib.request
-import time
-import pymongo
 import logging
+import multiprocessing as mp
 from dataclasses import dataclass
 
 from updaters import *
@@ -41,7 +39,7 @@ def timestamp():
 
 if __name__ == '__main__':
     startTime = time.time()
-
+    mp.set_start_method('spawn')
     parser = argparse.ArgumentParser(
         description='Update the BioGateway Metadata Cache with new data from the SPARQL endpoint.')
     parser.add_argument('hostname', metavar='hostname', type=str,
