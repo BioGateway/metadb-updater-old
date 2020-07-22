@@ -40,48 +40,6 @@ class UpdateContext:
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
-def update_dataType(dataType, args):
-    context = UpdateContext(args.hostname + ":" + args.port, args.dbName, args.wipe, args.testing, args.parallel)
-
-    if wipeData:
-        for collection in dataType.dbCollections:
-            print("Wiping collection: " + collection.name)
-            collection.reference.delete_many({})
-
-    if dataType.labels:
-        if parallel:
-            mp.Process(target=update_labels, args=(dataType, context)).start()
-        else:
-            update_labels(dataType, context)
-
-    if dataType.scores:
-        if parallel:
-            print("Scores")
-            mp.Process(target=update_scores, args=(dataType, context)).start()
-            # else:
-            update_scores(dataType, context)
-
-    if dataType.taxon:
-        if parallel:
-            print("Taxon")
-            mp.Process(target=update_taxon, args=(dataType, context)).start()
-        else:
-            update_taxon(dataType, context)
-
-    if dataType.instances:
-        if parallel:
-            print("Instances")
-            mp.Process(target=update_instances, args=(dataType, context)).start()
-        else:
-            update_instances(dataType, context)
-
-    if dataType.annotationScores:
-        if parallel:
-            print("Annotations")
-            mp.Process(target=update_annotationScore, args=(dataType, context)).start()
-        else:
-            update_annotationScore(dataType, context)
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Update the BioGateway Metadata Cache with new data from the SPARQL endpoint.')
@@ -172,7 +130,45 @@ if __name__ == '__main__':
 
     print(timestamp() + "Updating:")
     print(*dataTypes, sep="\n")
-    print(timestamp() + "Database collections:")
+
+    context = UpdateContext(args.hostname + ":" + args.port, args.dbName, args.wipe, args.testing, args.parallel)
 
     for dataType in dataTypes:
-        update_dataType(dataType, args)
+        if wipeData:
+            for collection in dataType.dbCollections:
+                print("Wiping collection: " + collection.name)
+                collection.reference.delete_many({})
+
+        if dataType.labels:
+            if parallel:
+                mp.Process(target=update_labels, args=(dataType, context)).start()
+            else:
+                update_labels(dataType, context)
+
+        if dataType.scores:
+            if parallel:
+                print("Scores")
+                mp.Process(target=update_scores, args=(dataType, context)).start()
+            else:
+                update_scores(dataType, context)
+
+        if dataType.taxon:
+            if parallel:
+                print("Taxon")
+                mp.Process(target=update_taxon, args=(dataType, context)).start()
+            else:
+                update_taxon(dataType, context)
+
+        if dataType.instances:
+            if parallel:
+                print("Instances")
+                mp.Process(target=update_instances, args=(dataType, context)).start()
+            else:
+                update_instances(dataType, context)
+
+        if dataType.annotationScores:
+            if parallel:
+                print("Annotations")
+                mp.Process(target=update_annotationScore, args=(dataType, context)).start()
+            else:
+                update_annotationScore(dataType, context)
