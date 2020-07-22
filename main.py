@@ -186,6 +186,11 @@ if __name__ == '__main__':
             else:
                 update_annotationScore(dataType, context)
 
+    # Start all processes:
+    print(timestamp() + "Starting " + str(len(processes)) + " workers...")
+    for process in processes:
+        process.start()
+
     # Wait for all processes to complete:
     for process in processes:
         process.join()

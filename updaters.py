@@ -7,18 +7,17 @@ import multiprocessing as mp
 def startBatches(dataType, name, target, context, query_batch_size):
     processes = []
 
-    print("Counting " + dataType.graph + " " + name + "...")
+    print(timestamp() + "Counting " + dataType.graph + " " + name + "...")
     count = target(dataType, context, justCount=True)
-    print("Found " + str(count) + " " + name + " in " + dataType.graph)
+    print(timestamp() + "Found " + str(count) + " " + name + " in " + dataType.graph)
     batches = int(count / query_batch_size) + 1
     if batches > 0:
-        print("Starting " + str(batches) + " batches.")
+        print(timestamp() + "Initializing " + str(batches) + " batches.")
         for i in range(batches):
             offset = i * query_batch_size
-            print("Starting process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(
+            print(timestamp() + "Adding process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(
                 batches) + " offset: " + str(offset))
             p = mp.Process(target=target, args=(dataType, context, offset, query_batch_size, count))
-            p.start()
             processes.append(p)
 
     return processes
