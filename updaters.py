@@ -3,6 +3,7 @@ from pymongo import IndexModel, ASCENDING, TEXT, DESCENDING, MongoClient
 from query_generators import *
 import multiprocessing as mp
 
+
 def startBatches(dataType, name, target, context, query_batch_size):
     processes = []
 
@@ -14,33 +15,35 @@ def startBatches(dataType, name, target, context, query_batch_size):
         print("Starting " + str(batches) + " batches.")
         for i in range(batches):
             offset = i * query_batch_size
-            print("Starting process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(batches) + " offset: " + str(offset))
-            p = mp.Process(target=target, args=(dataType, context, offset, query_batch_size))
+            print("Starting process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(
+                batches) + " offset: " + str(offset))
+            p = mp.Process(target=target, args=(dataType, context, offset, query_batch_size, count))
             p.start()
             processes.append(p)
 
     return processes
 
+
 indexes_prot_gene = [
-        IndexModel([("prefLabel", ASCENDING)]),
-        IndexModel([("synonyms", ASCENDING)]),
-        IndexModel([("lcSynonyms", ASCENDING)]),
-        IndexModel([("definition", TEXT)]),
-        IndexModel([("lcLabel", ASCENDING)]),
-        IndexModel([("refScore", DESCENDING)]),
-        IndexModel([("fromScore", DESCENDING)]),
-        IndexModel([("toScore", DESCENDING)]),
-        IndexModel([("taxon", ASCENDING)])]
+    IndexModel([("prefLabel", ASCENDING)]),
+    IndexModel([("synonyms", ASCENDING)]),
+    IndexModel([("lcSynonyms", ASCENDING)]),
+    IndexModel([("definition", TEXT)]),
+    IndexModel([("lcLabel", ASCENDING)]),
+    IndexModel([("refScore", DESCENDING)]),
+    IndexModel([("fromScore", DESCENDING)]),
+    IndexModel([("toScore", DESCENDING)]),
+    IndexModel([("taxon", ASCENDING)])]
 
 indexes_goall = [
-        IndexModel([("prefLabel", ASCENDING)]),
-        IndexModel([("synonyms", ASCENDING)]),
-        IndexModel([("lcSynonyms", ASCENDING)]),
-        IndexModel([("definition", ASCENDING)]),
-        IndexModel([("lcLabel", TEXT)]),
-        IndexModel([("refScore", DESCENDING)]),
-        IndexModel([("fromScore", DESCENDING)]),
-        IndexModel([("toScore", DESCENDING)])]
+    IndexModel([("prefLabel", ASCENDING)]),
+    IndexModel([("synonyms", ASCENDING)]),
+    IndexModel([("lcSynonyms", ASCENDING)]),
+    IndexModel([("definition", ASCENDING)]),
+    IndexModel([("lcLabel", TEXT)]),
+    IndexModel([("refScore", DESCENDING)]),
+    IndexModel([("fromScore", DESCENDING)]),
+    IndexModel([("toScore", DESCENDING)])]
 
 
 def drop_and_reset_database(dbName):
@@ -51,11 +54,14 @@ def drop_and_reset_database(dbName):
     db.gene.create_indexes(indexes_prot_gene)
     db.goall.create_indexes(indexes_goall)
 
+
 def get_ref(db, collection):
     return db[collection.name]
 
+
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
+
 
 def get_count(context, query):
     count_query = generate_count_query(query)
@@ -69,7 +75,8 @@ def get_count(context, query):
         count = int(line)
         return count
 
-def updater_worker(dataType, context, name, query, handler_function, offset=0, batchSize=0, justCount=False):
+
+def updater_worker(dataType, context, name, query, handler_function, offset=0, batchSize=0, count=0, justCount=False):
     startTime = time.time()
     if justCount:
         return get_count(context, query)
@@ -91,16 +98,21 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
             continue
         if counter % 10000 == 0:
             counterWithOffset = counter + offset
-            print(timestamp() + dataType.graph + " updated " + name + " line " + str(counterWithOffset) + " (offset: " + str(offset)+")...")
+            progress = str(counterWithOffset)
+            if batchSize:
+                progress += "/" + str(min((offset+batchSize), count))
+            print(timestamp() + dataType.graph + " updated " + name + " line " + progress)
         handler_function(mdb, dataType, line)
 
         counter += 1
 
     durationTime = time.time() - startTime
     print(timestamp() + "Updated " +
-          str(counter) + " " + dataType.graph + " " + name + " in " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+          str(counter) + " " + dataType.graph + " " + name + " in " + time.strftime("%H:%M:%S.",
+                                                                                    time.gmtime(durationTime)))
 
-def update_labels(dataType, context, offset=0, batchSize=0, justCount=False):
+
+def update_labels(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
     def update_labels_handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         for collection in dataType.dbCollections:
@@ -112,14 +124,16 @@ def update_labels(dataType, context, offset=0, batchSize=0, justCount=False):
             response = get_ref(mdb, collection).update_one({"_id": comps[0]}, update, upsert=True)
 
     return updater_worker(dataType,
-                   context, "labels",
-                   generate_name_label_query(dataType.graph, dataType.constraint),
-                   update_labels_handler,
-                   offset,
-                   batchSize,
-                   justCount)
+                          context, "labels",
+                          generate_name_label_query(dataType.graph, dataType.constraint),
+                          update_labels_handler,
+                          offset,
+                          batchSize,
+                          count,
+                          justCount)
 
-def update_synonyms(dataType, context, offset=0, batchSize=0, justCount=False):
+
+def update_synonyms(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         synonym = comps[1]
@@ -133,10 +147,11 @@ def update_synonyms(dataType, context, offset=0, batchSize=0, justCount=False):
                           handler,
                           offset,
                           batchSize,
+                          count,
                           justCount)
 
 
-def update_scores(dataType, context, offset=0, batchSize=0, justCount=False):
+def update_scores(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         fromScore = int(comps[1])
@@ -152,9 +167,11 @@ def update_scores(dataType, context, offset=0, batchSize=0, justCount=False):
                           handler,
                           offset,
                           batchSize,
+                          count,
                           justCount)
 
-def update_taxon(dataType, context, offset=0, batchSize=0, justCount=False):
+
+def update_taxon(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         taxon = comps[1]
@@ -170,9 +187,11 @@ def update_taxon(dataType, context, offset=0, batchSize=0, justCount=False):
                           handler,
                           offset,
                           batchSize,
+                          count,
                           justCount)
 
-def update_instances(dataType, context, offset=0, batchSize=0, justCount=False):
+
+def update_instances(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         instance = comps[1]
@@ -188,10 +207,11 @@ def update_instances(dataType, context, offset=0, batchSize=0, justCount=False):
                           handler,
                           offset,
                           batchSize,
+                          count,
                           justCount)
 
 
-def update_annotationScore(dataType, context, offset=0, batchSize=0, justCount=False):
+def update_annotationScore(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         score = int(comps[1])
@@ -207,4 +227,5 @@ def update_annotationScore(dataType, context, offset=0, batchSize=0, justCount=F
                           handler,
                           offset,
                           batchSize,
+                          count,
                           justCount)
