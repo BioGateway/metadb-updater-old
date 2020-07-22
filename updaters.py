@@ -38,12 +38,114 @@ def get_ref(db, collection):
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
-def update_labels(dataType, context):
+def get_count(context, query):
+    count_query = generate_count_query(query)
+    url = generateUrl(context.baseUrl, count_query)
+    data = urllib.request.urlopen(url)
+    firstLine = True
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        count = int(line)
+        return count
+
+
+def update_labels(dataType, context, offset=None, batchSize=None, justCount=False):
+    # startTime = time.time()
+    # query = generate_name_label_query(dataType.graph, dataType.constraint)
+    # if justCount:
+    #     return get_count(context, query)
+    #
+    # mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
+    # start_message = timestamp() + "Downloading label and description data for " + dataType.graph
+    # if offset:
+    #     start_message += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
+    # print(start_message)
+    # limit = batchSize if offset else context.limit
+    # url = generateUrl(context.baseUrl, query, limit, offset)
+    # data = urllib.request.urlopen(url)
+    #
+    # firstLine = True
+    # print(timestamp() + "Updating data for " + dataType.graph + "...")
+    # counter = 0
+    # for line in data:
+    #     if firstLine:
+    #         firstLine = False
+    #         continue
+    #     if counter % 10000 == 0:
+    #         counterWithOffset = counter + offset
+    #         print(timestamp() + " " + dataType.graph + " updated labels line " + str(counterWithOffset) + "...")
+    #     update_labels_handler(mdb, dataType, line)
+    #
+    #     counter += 1
+    #
+    # durationTime = time.time() - startTime
+    # print(timestamp() + "Updated " +
+    #       str(counter) + " " + dataType.graph + " labels in " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+    return updater_worker(dataType,
+                   context, "labels",
+                   generate_name_label_query(dataType.graph, dataType.constraint),
+                   update_labels_handler,
+                   offset,
+                   batchSize,
+                   justCount)
+
+def updater_worker(dataType, context, name, query, handler_function, offset=None, batchSize=None, justCount=False):
     startTime = time.time()
+    if justCount:
+        return get_count(context, query)
+
     mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-    print(timestamp() + "Downloading label and description data for " + dataType.graph + "...")
-    query = generate_name_label_query(dataType.graph, dataType.constraint)
-    url = generateUrl(context.baseUrl, query, context.limit)
+    start_message = timestamp() + "Downloading " + name + " data for " + dataType.graph
+    if offset:
+        start_message += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
+    print(start_message)
+    limit = batchSize if offset else context.limit
+    url = generateUrl(context.baseUrl, query, limit, offset)
+    data = urllib.request.urlopen(url)
+
+    firstLine = True
+    counter = 0
+    for line in data:
+        if firstLine:
+            firstLine = False
+            continue
+        if counter % 10000 == 0:
+            counterWithOffset = counter + offset
+            print(timestamp() + dataType.graph + " updated " + name + " line " + str(counterWithOffset) + "...")
+        handler_function(mdb, dataType, line)
+
+        counter += 1
+
+    durationTime = time.time() - startTime
+    print(timestamp() + "Updated " +
+          str(counter) + " " + dataType.graph + " " + name + " in " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
+
+
+def update_labels_handler(mdb, dataType, line):
+    comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+    for collection in dataType.dbCollections:
+        if collection.prefix:
+            definition = collection.prefix + comps[2]
+            update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
+        else:
+            update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
+        response = get_ref(mdb, collection).update_one({"_id": comps[0]}, update, upsert=True)
+
+def update_synonyms(dataType, context, offset=None, batchSize=None, justCount=False):
+    startTime = time.time()
+    query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
+    if justCount:
+        return get_count(context, query)
+
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
+    startMessage = timestamp() + "Downloading synonym data for " + dataType.graph
+    if offset:
+        startMessage += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
+    print(startMessage)
+    limit = batchSize if offset else context.limit
+    url = generateUrl(context.baseUrl, query, limit, offset)
     data = urllib.request.urlopen(url)
 
     firstLine = True
@@ -54,37 +156,8 @@ def update_labels(dataType, context):
             firstLine = False
             continue
         if counter % 10000 == 0:
-            print(timestamp() + " " + dataType.graph + " updated labels line " + str(counter) + "...")
-        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-        for collection in dataType.dbCollections:
-            if collection.prefix:
-                definition = collection.prefix + comps[2]
-                update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
-            else:
-                update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
-            response = get_ref(mdb, collection).update_one({"_id": comps[0]}, update, upsert=True)
-
-        counter += 1
-
-    durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + dataType.graph + " labels in " + time.strftime("%H:%M:%S.",
-                                                                                    time.gmtime(durationTime)))
-def update_synonyms(dataType, context):
-    startTime = time.time()
-    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-    print(timestamp() + "Downloading synonym data for " + dataType.graph + "...")
-    query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
-
-    firstLine = True
-    print(timestamp() + "Updating data for " + dataType.graph + "...")
-    counter = 0
-    for line in data:
-        if firstLine:
-            firstLine = False
-            continue
-        if counter % 10000 == 0:
-            print(timestamp() + " " + dataType.graph + " updated synonym line " + str(counter) + "...")
+            counterWithOffset = counter + offset
+            print(timestamp() + " " + dataType.graph + " updated synonym line " + str(counterWithOffset) + "...")
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         synonym = comps[1]
         update = {"$addToSet": {"synonyms": synonym, "lcSynonyms": synonym.lower()}}
@@ -94,7 +167,7 @@ def update_synonyms(dataType, context):
         counter += 1
 
     durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + dataType.graph + " synonyms in " +
+    print(timestamp() + "Updated " + str(counter) + " " + dataType.graph + " synonyms in " +
           time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 def update_scores(dataType, context):

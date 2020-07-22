@@ -151,20 +151,38 @@ if __name__ == '__main__':
 
     processes = []
 
+    query_batch_size = 250000
+
     for dataType in dataTypes:
         if dataType.labels:
             if parallel:
-                print("Starting process: " + dataType.graph + " labels.")
-                labels = mp.Process(target=update_labels, args=(dataType, context))
-                labels.start()
-                processes.append(labels)
-                print("Starting process: " + dataType.graph + " synonyms.")
-                synonyms = mp.Process(target=update_synonyms, args=(dataType, context))
-                synonyms.start()
-                processes.append(synonyms)
+                print("Counting " + dataType.graph + " labels...")
+                count = update_labels(dataType, context, justCount=True)
+                print("Found " + str(count) + " labels in " + dataType.graph)
+                batches = int(count / query_batch_size) + 1
+                if batches > 0:
+                    print("Starting " + str(batches) + " batches.")
+                    for i in range(batches):
+                        print("Starting process: " + dataType.graph + " labels " + str(i+1) +"/" + str(batches))
+                        offset = i * query_batch_size
+                        labels = mp.Process(target=update_labels, args=(dataType, context, offset, query_batch_size))
+                        labels.start()
+                        processes.append(labels)
 
+                count = update_synonyms(dataType, context, justCount=True)
+                print("Found " + str(count) + " synonyms in " + dataType.graph)
+                batches = int(count / query_batch_size) + 1
+                if batches > 0:
+                    print("Starting " + str(batches) + " batches.")
+                    for i in range(batches):
+                        print("Starting process: " + dataType.graph + " synonyms " + str(i + 1) + "/" + str(batches))
+                        offset = i * query_batch_size
+                        synonyms = mp.Process(target=update_synonyms, args=(dataType, context, offset, query_batch_size))
+                        synonyms.start()
+                        processes.append(synonyms)
             else:
                 update_labels(dataType, context)
+                update_synonyms(dataType, context)
 
         if dataType.scores:
             if parallel:

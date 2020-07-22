@@ -86,7 +86,18 @@ def generate_GO_namespace_constraint(namespace):
                  + namespace + "\" ^^<http://www.w3.org/2001/XMLSchema#string> ."
     return constraint
 
-def generateUrl(baseUrl, query, limit):
+def generate_count_query(query):
+    count_query = """
+        SELECT COUNT(?uri)
+        WHERE {
+        %s
+    }   
+    """ % (query)
+    return count_query
+
+def generateUrl(baseUrl, query, limit=None, offset=None):
     if limit:
         query += "\nLIMIT " + str(limit)
+    if offset:
+        query += "\nOFFSET " + str(limit)
     return "http://" + baseUrl + "/sparql/" + "?query=" + urllib.parse.quote(query) + "&format=text%2Ftab-separated-values&timeout=0"
