@@ -139,6 +139,7 @@ if __name__ == '__main__':
                 print("Wiping collection: " + collection.name)
                 collection.reference.delete_many({})
 
+    for dataType in dataTypes:
         if dataType.labels:
             if parallel:
                 mp.Process(target=update_labels, args=(dataType, context)).start()
