@@ -13,8 +13,8 @@ def startBatches(dataType, name, target, context, query_batch_size):
     if batches > 0:
         print("Starting " + str(batches) + " batches.")
         for i in range(batches):
-            print("Starting process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(batches))
             offset = i * query_batch_size
+            print("Starting process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(batches) + " offset: " + str(offset))
             p = mp.Process(target=target, args=(dataType, context, offset, query_batch_size))
             p.start()
             processes.append(p)
@@ -91,7 +91,7 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
             continue
         if counter % 10000 == 0:
             counterWithOffset = counter + offset
-            print(timestamp() + dataType.graph + " updated " + name + " line " + str(counterWithOffset) + "...")
+            print(timestamp() + dataType.graph + " updated " + name + " line " + str(counterWithOffset) + " (offset: " + str(offset)+")...")
         handler_function(mdb, dataType, line)
 
         counter += 1
