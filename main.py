@@ -34,13 +34,15 @@ class UpdateContext:
     baseUrl: str
     dbName: str
     wipeData: bool
-    testingMode: bool
+    limit: int
     parallel: bool
 
 def timestamp():
     return "[" + time.strftime("%H:%M:%S", time.localtime()) + "] "
 
 if __name__ == '__main__':
+    startTime = time.time()
+
     parser = argparse.ArgumentParser(
         description='Update the BioGateway Metadata Cache with new data from the SPARQL endpoint.')
     parser.add_argument('hostname', metavar='hostname', type=str,
@@ -50,8 +52,9 @@ if __name__ == '__main__':
     parser.add_argument('dbName', metavar='db-name', type=str, help='The MongoDB database to store the cached data')
     parser.add_argument('--datatype', type=str, help='Limit update to this data type.')
     parser.add_argument('--field', type=str, help='Limit update to this field type.')
-    parser.add_argument('--testing', default=False, dest='testing', action='store_true', help='Testing mode only loads the first 10000 entries of each data type.')
-    parser.add_argument('--wipe', default=False, dest='wipe', action='store_true', help='Wipe all data from the database before updating.')
+    parser.add_argument('--limit', type=int, dest='limit', help='Limits the queries to the first N entries of each data type.')
+    parser.add_argument('--drop', default=False, dest='drop', action='store_true', help='Drop all data from the database before updating.')
+    parser.add_argument('--wipe', default=False, dest='wipe', action='store_true', help='Wipe all data from the collections being updated.')
     parser.add_argument('--parallel', default=False, dest='parallel', action='store_true', help='Run in parallel. This might cause instabilities.')
 
     args = parser.parse_args()
@@ -59,8 +62,9 @@ if __name__ == '__main__':
     baseUrl = args.hostname + ":" + args.port
     dbName = args.dbName
     wipeData = args.wipe
-    testingMode = args.testing
+    queryLimit = args.limit
     parallel = args.parallel
+    dropDatabase = args.drop
 
     headerText = """
     %s          -------------------           METADATABASE UPDATER          -------------------
@@ -128,10 +132,16 @@ if __name__ == '__main__':
                 dataType.instances = False
                 dataType.annotationScores = True
 
+    if dropDatabase:
+        print("Dropping database " + dbName + "and rebuilding indexes.")
+        drop_and_reset_database(dbName)
+        print("Database " + dbName + " has been reset.")
+
     print(timestamp() + "Updating:")
     print(*dataTypes, sep="\n")
 
-    context = UpdateContext(args.hostname + ":" + args.port, args.dbName, args.wipe, args.testing, args.parallel)
+    context = UpdateContext(args.hostname + ":" + args.port, args.dbName, args.wipe, args.limit, args.parallel)
+
 
     for dataType in dataTypes:
         if wipeData:
@@ -139,37 +149,57 @@ if __name__ == '__main__':
                 print("Wiping collection: " + collection.name)
                 collection.reference.delete_many({})
 
+    processes = []
+
     for dataType in dataTypes:
         if dataType.labels:
             if parallel:
-                mp.Process(target=update_labels, args=(dataType, context)).start()
+                print("Starting process: " + dataType.graph + " labels.")
+                p = mp.Process(target=update_labels, args=(dataType, context))
+                p.start()
+                processes.append(p)
             else:
                 update_labels(dataType, context)
 
         if dataType.scores:
             if parallel:
-                print("Scores")
-                mp.Process(target=update_scores, args=(dataType, context)).start()
+                print("Starting process: " + dataType.graph + " scores.")
+                p = mp.Process(target=update_scores, args=(dataType, context))
+                p.start()
+                processes.append(p)
             else:
                 update_scores(dataType, context)
 
         if dataType.taxon:
             if parallel:
-                print("Taxon")
-                mp.Process(target=update_taxon, args=(dataType, context)).start()
+                print("Starting process: " + dataType.graph + " taxon.")
+                p = mp.Process(target=update_taxon, args=(dataType, context))
+                p.start()
+                processes.append(p)
             else:
                 update_taxon(dataType, context)
 
         if dataType.instances:
             if parallel:
-                print("Instances")
-                mp.Process(target=update_instances, args=(dataType, context)).start()
+                print("Starting process: " + dataType.graph + " instances.")
+                p = mp.Process(target=update_instances, args=(dataType, context))
+                p.start()
+                processes.append(p)
             else:
                 update_instances(dataType, context)
 
         if dataType.annotationScores:
             if parallel:
-                print("Annotations")
-                mp.Process(target=update_annotationScore, args=(dataType, context)).start()
+                print("Starting process: " + dataType.graph + " annotation score.")
+                p = mp.Process(target=update_annotationScore, args=(dataType, context))
+                p.start()
+                processes.append(p)
             else:
                 update_annotationScore(dataType, context)
+
+    # Wait for all processes to complete:
+    for process in processes:
+        process.join()
+
+    durationTime = time.time() - startTime
+    print(timestamp() + "All updates completed in: " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))

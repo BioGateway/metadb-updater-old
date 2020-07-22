@@ -1,6 +1,36 @@
 import time
-import pymongo
+from pymongo import IndexModel, ASCENDING, TEXT, DESCENDING, MongoClient
 from query_generators import *
+
+indexes_prot_gene = [
+        IndexModel([("prefLabel", ASCENDING)]),
+        IndexModel([("synonyms", ASCENDING)]),
+        IndexModel([("lcSynonyms", ASCENDING)]),
+        IndexModel([("definition", TEXT)]),
+        IndexModel([("lcLabel", ASCENDING)]),
+        IndexModel([("refScore", DESCENDING)]),
+        IndexModel([("fromScore", DESCENDING)]),
+        IndexModel([("toScore", DESCENDING)]),
+        IndexModel([("taxon", ASCENDING)])]
+
+indexes_goall = [
+        IndexModel([("prefLabel", ASCENDING)]),
+        IndexModel([("synonyms", ASCENDING)]),
+        IndexModel([("lcSynonyms", ASCENDING)]),
+        IndexModel([("definition", ASCENDING)]),
+        IndexModel([("lcLabel", TEXT)]),
+        IndexModel([("refScore", DESCENDING)]),
+        IndexModel([("fromScore", DESCENDING)]),
+        IndexModel([("toScore", DESCENDING)])]
+
+
+def drop_and_reset_database(dbName):
+    db = MongoClient("mongodb://localhost:27017/")[dbName]
+
+    db.command("dropDatabase")
+    db.prot.create_indexes(indexes_prot_gene)
+    db.gene.create_indexes(indexes_prot_gene)
+    db.goall.create_indexes(indexes_goall)
 
 def get_ref(db, collection):
     return db[collection.name]
@@ -10,10 +40,10 @@ def timestamp():
 
 def update_labels(dataType, context):
     startTime = time.time()
-    mdb = pymongo.MongoClient("mongodb://localhost:27017/")[context.dbName]
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
     print(timestamp() + "Downloading label and description data for " + dataType.graph + "...")
     query = generate_name_label_query(dataType.graph, dataType.constraint)
-    url = generateUrl(context.baseUrl, query, context.testingMode)
+    url = generateUrl(context.baseUrl, query, context.limit)
     data = urllib.request.urlopen(url)
 
     firstLine = True
@@ -38,7 +68,7 @@ def update_labels(dataType, context):
 
     print(timestamp() + "Downloading synonym data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.testingMode))
+    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
 
     firstLine = True
     print(timestamp() + "Updating data for " + dataType.graph + "...")
@@ -64,11 +94,11 @@ def update_labels(dataType, context):
 
 def update_scores(dataType, context):
     startTime = time.time()
-    mdb = pymongo.MongoClient("mongodb://localhost:27017/")[context.dbName]
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
 
     print(timestamp() + "Downloading scores for " + dataType.graph + "...")
     query = generate_scores_query(dataType.graph, dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.testingMode))
+    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
 
     firstLine = True
     print(timestamp() + "Updating score data for " + dataType.graph + "...")
@@ -95,12 +125,12 @@ def update_scores(dataType, context):
 
 def update_taxon(dataType, context):
     startTime = time.time()
-    mdb = pymongo.MongoClient("mongodb://localhost:27017/")[context.dbName]
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
 
     print(timestamp() + "Downloading taxa data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
                                  dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.testingMode))
+    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
 
     firstLine = True
     print(timestamp() + "Updating taxon data for " + dataType.graph + "...")
@@ -126,12 +156,12 @@ def update_taxon(dataType, context):
 
 def update_instances(dataType, context):
     startTime = time.time()
-    mdb = pymongo.MongoClient("mongodb://localhost:27017/")[context.dbName]
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
 
     print(timestamp() + "Downloading instance data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
                                  dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.testingMode))
+    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
 
     firstLine = True
     print(timestamp() + "Updating instance data for " + dataType.graph + "...")
@@ -157,12 +187,12 @@ def update_instances(dataType, context):
 
 def update_annotationScore(dataType, context):
     startTime = time.time()
-    mdb = pymongo.MongoClient("mongodb://localhost:27017/")[context.dbName]
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
 
     print(timestamp() + "Downloading annotation scores for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
                                  dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.testingMode))
+    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
 
     firstLine = True
     print(timestamp() + "Updating annotation scores for " + dataType.graph + "...")
