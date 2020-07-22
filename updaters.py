@@ -66,6 +66,12 @@ def update_labels(dataType, context):
 
         counter += 1
 
+    durationTime = time.time() - startTime
+    print(timestamp() + "Updated " + dataType.graph + " labels in " + time.strftime("%H:%M:%S.",
+                                                                                    time.gmtime(durationTime)))
+def update_synonyms(dataType, context):
+    startTime = time.time()
+    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
     print(timestamp() + "Downloading synonym data for " + dataType.graph + "...")
     query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
     data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
@@ -88,9 +94,8 @@ def update_labels(dataType, context):
         counter += 1
 
     durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + dataType.graph + " labels in " + time.strftime("%H:%M:%S.",
-                                                                                    time.gmtime(durationTime)))
-
+    print(timestamp() + "Updated " + dataType.graph + " synonyms in " +
+          time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
 def update_scores(dataType, context):
     startTime = time.time()

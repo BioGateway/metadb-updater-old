@@ -155,9 +155,14 @@ if __name__ == '__main__':
         if dataType.labels:
             if parallel:
                 print("Starting process: " + dataType.graph + " labels.")
-                p = mp.Process(target=update_labels, args=(dataType, context))
-                p.start()
-                processes.append(p)
+                labels = mp.Process(target=update_labels, args=(dataType, context))
+                labels.start()
+                processes.append(labels)
+                print("Starting process: " + dataType.graph + " synonyms.")
+                synonyms = mp.Process(target=update_synonyms, args=(dataType, context))
+                synonyms.start()
+                processes.append(synonyms)
+
             else:
                 update_labels(dataType, context)
 
