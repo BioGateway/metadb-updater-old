@@ -3,7 +3,6 @@ import argparse
 import urllib.request
 import time
 import pymongo
-import multiprocessing as mp
 import logging
 from dataclasses import dataclass
 
@@ -156,67 +155,34 @@ if __name__ == '__main__':
     for dataType in dataTypes:
         if dataType.labels:
             if parallel:
-                print("Counting " + dataType.graph + " labels...")
-                count = update_labels(dataType, context, justCount=True)
-                print("Found " + str(count) + " labels in " + dataType.graph)
-                batches = int(count / query_batch_size) + 1
-                if batches > 0:
-                    print("Starting " + str(batches) + " batches.")
-                    for i in range(batches):
-                        print("Starting process: " + dataType.graph + " labels " + str(i+1) +"/" + str(batches))
-                        offset = i * query_batch_size
-                        labels = mp.Process(target=update_labels, args=(dataType, context, offset, query_batch_size))
-                        labels.start()
-                        processes.append(labels)
-
-                count = update_synonyms(dataType, context, justCount=True)
-                print("Found " + str(count) + " synonyms in " + dataType.graph)
-                batches = int(count / query_batch_size) + 1
-                if batches > 0:
-                    print("Starting " + str(batches) + " batches.")
-                    for i in range(batches):
-                        print("Starting process: " + dataType.graph + " synonyms " + str(i + 1) + "/" + str(batches))
-                        offset = i * query_batch_size
-                        synonyms = mp.Process(target=update_synonyms, args=(dataType, context, offset, query_batch_size))
-                        synonyms.start()
-                        processes.append(synonyms)
+                processes.extend(startBatches(dataType, "labels", update_labels, context, query_batch_size))
+                processes.extend(startBatches(dataType, "synonyms", update_synonyms, context, query_batch_size))
             else:
                 update_labels(dataType, context)
                 update_synonyms(dataType, context)
 
         if dataType.scores:
             if parallel:
-                print("Starting process: " + dataType.graph + " scores.")
-                p = mp.Process(target=update_scores, args=(dataType, context))
-                p.start()
-                processes.append(p)
+                processes.extend(startBatches(dataType, "scores", update_scores, context, query_batch_size))
+
             else:
                 update_scores(dataType, context)
 
         if dataType.taxon:
             if parallel:
-                print("Starting process: " + dataType.graph + " taxon.")
-                p = mp.Process(target=update_taxon, args=(dataType, context))
-                p.start()
-                processes.append(p)
+                processes.extend(startBatches(dataType, "taxon", update_taxon, context, query_batch_size))
             else:
                 update_taxon(dataType, context)
 
         if dataType.instances:
             if parallel:
-                print("Starting process: " + dataType.graph + " instances.")
-                p = mp.Process(target=update_instances, args=(dataType, context))
-                p.start()
-                processes.append(p)
+                processes.extend(startBatches(dataType, "instances", update_instances, context, query_batch_size))
             else:
                 update_instances(dataType, context)
 
         if dataType.annotationScores:
             if parallel:
-                print("Starting process: " + dataType.graph + " annotation score.")
-                p = mp.Process(target=update_annotationScore, args=(dataType, context))
-                p.start()
-                processes.append(p)
+                processes.extend(startBatches(dataType, "annotation score", update_annotationScore, context, query_batch_size))
             else:
                 update_annotationScore(dataType, context)
 

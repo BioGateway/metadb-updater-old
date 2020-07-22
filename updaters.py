@@ -1,6 +1,25 @@
 import time
 from pymongo import IndexModel, ASCENDING, TEXT, DESCENDING, MongoClient
 from query_generators import *
+import multiprocessing as mp
+
+def startBatches(dataType, name, target, context, query_batch_size):
+    processes = []
+
+    print("Counting " + dataType.graph + " " + name + "...")
+    count = target(dataType, context, justCount=True)
+    print("Found " + str(count) + " " + name + " in " + dataType.graph)
+    batches = int(count / query_batch_size) + 1
+    if batches > 0:
+        print("Starting " + str(batches) + " batches.")
+        for i in range(batches):
+            print("Starting process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(batches))
+            offset = i * query_batch_size
+            p = mp.Process(target=target, args=(dataType, context, offset, query_batch_size))
+            p.start()
+            processes.append(p)
+
+    return processes
 
 indexes_prot_gene = [
         IndexModel([("prefLabel", ASCENDING)]),
@@ -50,48 +69,7 @@ def get_count(context, query):
         count = int(line)
         return count
 
-
-def update_labels(dataType, context, offset=None, batchSize=None, justCount=False):
-    # startTime = time.time()
-    # query = generate_name_label_query(dataType.graph, dataType.constraint)
-    # if justCount:
-    #     return get_count(context, query)
-    #
-    # mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-    # start_message = timestamp() + "Downloading label and description data for " + dataType.graph
-    # if offset:
-    #     start_message += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
-    # print(start_message)
-    # limit = batchSize if offset else context.limit
-    # url = generateUrl(context.baseUrl, query, limit, offset)
-    # data = urllib.request.urlopen(url)
-    #
-    # firstLine = True
-    # print(timestamp() + "Updating data for " + dataType.graph + "...")
-    # counter = 0
-    # for line in data:
-    #     if firstLine:
-    #         firstLine = False
-    #         continue
-    #     if counter % 10000 == 0:
-    #         counterWithOffset = counter + offset
-    #         print(timestamp() + " " + dataType.graph + " updated labels line " + str(counterWithOffset) + "...")
-    #     update_labels_handler(mdb, dataType, line)
-    #
-    #     counter += 1
-    #
-    # durationTime = time.time() - startTime
-    # print(timestamp() + "Updated " +
-    #       str(counter) + " " + dataType.graph + " labels in " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
-    return updater_worker(dataType,
-                   context, "labels",
-                   generate_name_label_query(dataType.graph, dataType.constraint),
-                   update_labels_handler,
-                   offset,
-                   batchSize,
-                   justCount)
-
-def updater_worker(dataType, context, name, query, handler_function, offset=None, batchSize=None, justCount=False):
+def updater_worker(dataType, context, name, query, handler_function, offset=0, batchSize=0, justCount=False):
     startTime = time.time()
     if justCount:
         return get_count(context, query)
@@ -122,71 +100,44 @@ def updater_worker(dataType, context, name, query, handler_function, offset=None
     print(timestamp() + "Updated " +
           str(counter) + " " + dataType.graph + " " + name + " in " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
+def update_labels(dataType, context, offset=0, batchSize=0, justCount=False):
+    def update_labels_handler(mdb, dataType, line):
+        comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
+        for collection in dataType.dbCollections:
+            if collection.prefix:
+                definition = collection.prefix + comps[2]
+                update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
+            else:
+                update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
+            response = get_ref(mdb, collection).update_one({"_id": comps[0]}, update, upsert=True)
 
-def update_labels_handler(mdb, dataType, line):
-    comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
-    for collection in dataType.dbCollections:
-        if collection.prefix:
-            definition = collection.prefix + comps[2]
-            update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": definition}}
-        else:
-            update = {"$set": {"prefLabel": comps[1], "lcLabel": comps[1].lower(), "definition": comps[2]}}
-        response = get_ref(mdb, collection).update_one({"_id": comps[0]}, update, upsert=True)
+    return updater_worker(dataType,
+                   context, "labels",
+                   generate_name_label_query(dataType.graph, dataType.constraint),
+                   update_labels_handler,
+                   offset,
+                   batchSize,
+                   justCount)
 
-def update_synonyms(dataType, context, offset=None, batchSize=None, justCount=False):
-    startTime = time.time()
-    query = generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint)
-    if justCount:
-        return get_count(context, query)
-
-    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-    startMessage = timestamp() + "Downloading synonym data for " + dataType.graph
-    if offset:
-        startMessage += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
-    print(startMessage)
-    limit = batchSize if offset else context.limit
-    url = generateUrl(context.baseUrl, query, limit, offset)
-    data = urllib.request.urlopen(url)
-
-    firstLine = True
-    print(timestamp() + "Updating data for " + dataType.graph + "...")
-    counter = 0
-    for line in data:
-        if firstLine:
-            firstLine = False
-            continue
-        if counter % 10000 == 0:
-            counterWithOffset = counter + offset
-            print(timestamp() + " " + dataType.graph + " updated synonym line " + str(counterWithOffset) + "...")
+def update_synonyms(dataType, context, offset=0, batchSize=0, justCount=False):
+    def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         synonym = comps[1]
         update = {"$addToSet": {"synonyms": synonym, "lcSynonyms": synonym.lower()}}
         for dbCol in dataType.dbCollections:
             response = get_ref(mdb, dbCol).update_one({"_id": comps[0]}, update, upsert=True)
 
-        counter += 1
+    return updater_worker(dataType,
+                          context, "synonyms",
+                          generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint),
+                          handler,
+                          offset,
+                          batchSize,
+                          justCount)
 
-    durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + str(counter) + " " + dataType.graph + " synonyms in " +
-          time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
 
-def update_scores(dataType, context):
-    startTime = time.time()
-    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-
-    print(timestamp() + "Downloading scores for " + dataType.graph + "...")
-    query = generate_scores_query(dataType.graph, dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
-
-    firstLine = True
-    print(timestamp() + "Updating score data for " + dataType.graph + "...")
-    counter = 0
-    for line in data:
-        if firstLine:
-            firstLine = False
-            continue
-        if counter % 10000 == 0:
-            print(timestamp() + " " + dataType.graph + " updated score line " + str(counter) + "...")
+def update_scores(dataType, context, offset=0, batchSize=0, justCount=False):
+    def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         fromScore = int(comps[1])
         toScore = int(comps[2])
@@ -195,99 +146,65 @@ def update_scores(dataType, context):
         for dbCol in dataType.dbCollections:
             response = get_ref(mdb, dbCol).update_one({"_id": comps[0]}, update, upsert=True)
 
-        counter += 1
-    durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + dataType.graph + " scores in " + time.strftime("%H:%M:%S.",
-                                                                                    time.gmtime(durationTime)))
+    return updater_worker(dataType,
+                          context, "scores",
+                          generate_scores_query(dataType.graph, dataType.constraint),
+                          handler,
+                          offset,
+                          batchSize,
+                          justCount)
 
-
-def update_taxon(dataType, context):
-    startTime = time.time()
-    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-
-    print(timestamp() + "Downloading taxa data for " + dataType.graph + "...")
-    query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
-                                 dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
-
-    firstLine = True
-    print(timestamp() + "Updating taxon data for " + dataType.graph + "...")
-    counter = 0
-    for line in data:
-        if firstLine:
-            firstLine = False
-            continue
-        if counter % 10000 == 0:
-            print(timestamp() + " " + dataType.graph + " updated taxon line " + str(counter) + "...")
-
+def update_taxon(dataType, context, offset=0, batchSize=0, justCount=False):
+    def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         taxon = comps[1]
         update = {"$set": {"taxon": taxon}}
         for dbCol in dataType.dbCollections:
             response = get_ref(mdb, dbCol).update_one({"_id": comps[0]}, update, upsert=True)
 
-        counter += 1
-    durationTime = time.time() - startTime
-    print(
-        timestamp() + "Updated " + dataType.graph + " taxa in " + time.strftime("%H:%M:%S.", time.gmtime(durationTime)))
-
-
-def update_instances(dataType, context):
-    startTime = time.time()
-    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-
-    print(timestamp() + "Downloading instance data for " + dataType.graph + "...")
-    query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
+    query = generate_field_query(dataType.graph, "<http://purl.obolibrary.org/obo/BFO_0000052>",
                                  dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
+    return updater_worker(dataType,
+                          context, "taxon",
+                          query,
+                          handler,
+                          offset,
+                          batchSize,
+                          justCount)
 
-    firstLine = True
-    print(timestamp() + "Updating instance data for " + dataType.graph + "...")
-    counter = 0
-    for line in data:
-        if firstLine:
-            firstLine = False
-            continue
-        if counter % 10000 == 0:
-            print(timestamp() + " " + dataType.graph + " updated instance data line " + str(counter) + "...")
-
+def update_instances(dataType, context, offset=0, batchSize=0, justCount=False):
+    def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         instance = comps[1]
         update = {"$addToSet": {"instances": instance}}
         for dbCol in dataType.dbCollections:
             response = get_ref(mdb, dbCol).update_one({"_id": comps[0]}, update, upsert=True)
 
-        counter += 1
-    durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + dataType.graph + " instances in " + time.strftime("%H:%M:%S.",
-                                                                                       time.gmtime(durationTime)))
-
-
-def update_annotationScore(dataType, context):
-    startTime = time.time()
-    mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-
-    print(timestamp() + "Downloading annotation scores for " + dataType.graph + "...")
-    query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
+    query = generate_field_query(dataType.graph, "<http://schema.org/evidenceOrigin>",
                                  dataType.constraint)
-    data = urllib.request.urlopen(generateUrl(context.baseUrl, query, context.limit))
+    return updater_worker(dataType,
+                          context, "instances",
+                          query,
+                          handler,
+                          offset,
+                          batchSize,
+                          justCount)
 
-    firstLine = True
-    print(timestamp() + "Updating annotation scores for " + dataType.graph + "...")
-    counter = 0
-    for line in data:
-        if firstLine:
-            firstLine = False
-            continue
-        if counter % 10000 == 0:
-            print(timestamp() + " " + dataType.graph + " updated annotation scores line " + str(counter) + "...")
+
+def update_annotationScore(dataType, context, offset=0, batchSize=0, justCount=False):
+    def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         score = int(comps[1])
         update = {"$set": {"annotationScore": score}}
         for dbCol in dataType.dbCollections:
             response = get_ref(mdb, dbCol).update_one({"_id": comps[0]}, update, upsert=True)
 
-        counter += 1
-    durationTime = time.time() - startTime
-    print(timestamp() + "Updated " + dataType.graph + " annotationScores in " + time.strftime("%H:%M:%S.", time.gmtime(
-        durationTime)))
+    query = generate_field_query(dataType.graph, "<http://schema.org/evidenceLevel>",
+                                 dataType.constraint)
+    return updater_worker(dataType,
+                          context, "annotation scores",
+                          query,
+                          handler,
+                          offset,
+                          batchSize,
+                          justCount)
