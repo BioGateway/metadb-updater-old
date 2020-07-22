@@ -4,20 +4,20 @@ from query_generators import *
 import multiprocessing as mp
 import urllib.request
 
-def startBatches(dataType, name, target, context, query_batch_size):
+def startBatches(dataType, name, target, context):
     processes = []
 
     print(timestamp() + "Counting " + dataType.graph + " " + name + "...")
     count = target(dataType, context, justCount=True)
     print(timestamp() + "Found " + str(count) + " " + name + " in " + dataType.graph)
-    batches = int(count / query_batch_size) + 1
+    batches = int(count / context.batch_size) + 1
     if batches > 0:
         print(timestamp() + "Initializing " + str(batches) + " batches.")
         for i in range(batches):
-            offset = i * query_batch_size
+            offset = i * context.batch_size
             print(timestamp() + "Adding process: " + dataType.graph + " " + name + " " + str(i + 1) + "/" + str(
                 batches) + " offset: " + str(offset))
-            p = mp.Process(target=target, args=(dataType, context, offset, query_batch_size, count))
+            p = mp.Process(target=target, args=(dataType, context, offset, count))
             processes.append(p)
 
     return processes
@@ -75,7 +75,7 @@ def get_count(context, query):
         return count
 
 
-def updater_worker(dataType, context, name, query, handler_function, offset=0, batchSize=0, count=0, justCount=False):
+def updater_worker(dataType, context, name, query, handler_function, offset=0, count=0, justCount=False):
     startTime = time.time()
     if justCount:
         return get_count(context, query)
@@ -83,10 +83,9 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
     mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
     start_message = timestamp() + "Downloading " + name + " data for " + dataType.graph
     if offset:
-        start_message += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
+        start_message += " in " + str(context.batch_size) + " chunks. Offset: " + str(offset)
     print(start_message)
-    limit = batchSize if batchSize else context.limit
-    url = generateUrl(context.baseUrl, query, limit, offset)
+    url = generateUrl(context.baseUrl, query, context.batch_size, offset)
     data = urllib.request.urlopen(url)
     durationTime = time.time() - startTime
     print(timestamp() + "Downloaded " + dataType.graph + " " + name + " data in " + time.strftime("%H:%M:%S.",
@@ -100,8 +99,8 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
         if counter % 10000 == 0:
             counterWithOffset = counter + offset
             progress = str(counterWithOffset)
-            if batchSize:
-                progress += "/" + str(min((offset+batchSize), count))
+            if context.batch_size:
+                progress += "/" + str(min((offset+context.batch_size), count))
             print(timestamp() + dataType.graph + " updated " + name + " line " + progress)
         handler_function(mdb, dataType, line)
 
@@ -113,7 +112,7 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
                                                                                     time.gmtime(durationTime)))
 
 
-def update_labels(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
+def update_labels(dataType, context, offset=0, count=0, justCount=False):
     def update_labels_handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         for collection in dataType.dbCollections:
@@ -129,12 +128,11 @@ def update_labels(dataType, context, offset=0, batchSize=0, count=0, justCount=F
                           generate_name_label_query(dataType.graph, dataType.constraint),
                           update_labels_handler,
                           offset,
-                          batchSize,
                           count,
                           justCount)
 
 
-def update_synonyms(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
+def update_synonyms(dataType, context, offset=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         synonym = comps[1]
@@ -147,12 +145,11 @@ def update_synonyms(dataType, context, offset=0, batchSize=0, count=0, justCount
                           generate_field_query(dataType.graph, "skos:altLabel", dataType.constraint),
                           handler,
                           offset,
-                          batchSize,
                           count,
                           justCount)
 
 
-def update_scores(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
+def update_scores(dataType, context, offset=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         fromScore = int(comps[1])
@@ -167,12 +164,11 @@ def update_scores(dataType, context, offset=0, batchSize=0, count=0, justCount=F
                           generate_scores_query(dataType.graph, dataType.constraint),
                           handler,
                           offset,
-                          batchSize,
                           count,
                           justCount)
 
 
-def update_taxon(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
+def update_taxon(dataType, context, offset=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         taxon = comps[1]
@@ -187,12 +183,11 @@ def update_taxon(dataType, context, offset=0, batchSize=0, count=0, justCount=Fa
                           query,
                           handler,
                           offset,
-                          batchSize,
                           count,
                           justCount)
 
 
-def update_instances(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
+def update_instances(dataType, context, offset=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         instance = comps[1]
@@ -207,12 +202,11 @@ def update_instances(dataType, context, offset=0, batchSize=0, count=0, justCoun
                           query,
                           handler,
                           offset,
-                          batchSize,
                           count,
                           justCount)
 
 
-def update_annotationScore(dataType, context, offset=0, batchSize=0, count=0, justCount=False):
+def update_annotationScore(dataType, context, offset=0, count=0, justCount=False):
     def handler(mdb, dataType, line):
         comps = line.decode("utf-8").replace("\"", "").replace("\n", "").split("\t")
         score = int(comps[1])
@@ -227,6 +221,5 @@ def update_annotationScore(dataType, context, offset=0, batchSize=0, count=0, ju
                           query,
                           handler,
                           offset,
-                          batchSize,
                           count,
                           justCount)

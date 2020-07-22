@@ -31,7 +31,7 @@ class UpdateContext:
     baseUrl: str
     dbName: str
     wipeData: bool
-    limit: int
+    batch_size: int
     parallel: bool
 
 def timestamp():
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('dbName', metavar='db-name', type=str, help='The MongoDB database to store the cached data')
     parser.add_argument('--datatype', type=str, help='Limit update to this data type.')
     parser.add_argument('--field', type=str, help='Limit update to this field type.')
-    parser.add_argument('--limit', type=int, dest='limit', help='Limits the queries to the first N entries of each data type.')
+    parser.add_argument('--batchsize', type=int, default=250000, dest='batchsize', help='Batches the queries to N entries of each data type.')
     parser.add_argument('--drop', default=False, dest='drop', action='store_true', help='Drop all data from the database before updating.')
     parser.add_argument('--wipe', default=False, dest='wipe', action='store_true', help='Wipe all data from the collections being updated.')
     parser.add_argument('--parallel', default=False, dest='parallel', action='store_true', help='Run in parallel. This might cause instabilities.')
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     baseUrl = args.hostname + ":" + args.port
     dbName = args.dbName
     wipeData = args.wipe
-    queryLimit = args.limit
+    query_batch_size = args.batchsize
     parallel = args.parallel
     dropDatabase = args.drop
 
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     print(timestamp() + "Updating:")
     print(*dataTypes, sep="\n")
 
-    context = UpdateContext(args.hostname + ":" + args.port, args.dbName, args.wipe, args.limit, args.parallel)
+    context = UpdateContext(args.hostname + ":" + args.port, args.dbName, args.wipe, args.batchsize, args.parallel)
 
 
     for dataType in dataTypes:
@@ -148,39 +148,37 @@ if __name__ == '__main__':
 
     processes = []
 
-    query_batch_size = 250000
-
     for dataType in dataTypes:
         if dataType.labels:
             if parallel:
-                processes.extend(startBatches(dataType, "labels", update_labels, context, query_batch_size))
-                processes.extend(startBatches(dataType, "synonyms", update_synonyms, context, query_batch_size))
+                processes.extend(startBatches(dataType, "labels", update_labels, context))
+                processes.extend(startBatches(dataType, "synonyms", update_synonyms, context))
             else:
                 update_labels(dataType, context)
                 update_synonyms(dataType, context)
 
         if dataType.scores:
             if parallel:
-                processes.extend(startBatches(dataType, "scores", update_scores, context, query_batch_size))
+                processes.extend(startBatches(dataType, "scores", update_scores, context))
 
             else:
                 update_scores(dataType, context)
 
         if dataType.taxon:
             if parallel:
-                processes.extend(startBatches(dataType, "taxon", update_taxon, context, query_batch_size))
+                processes.extend(startBatches(dataType, "taxon", update_taxon, context))
             else:
                 update_taxon(dataType, context)
 
         if dataType.instances:
             if parallel:
-                processes.extend(startBatches(dataType, "instances", update_instances, context, query_batch_size))
+                processes.extend(startBatches(dataType, "instances", update_instances, context))
             else:
                 update_instances(dataType, context)
 
         if dataType.annotationScores:
             if parallel:
-                processes.extend(startBatches(dataType, "annotation score", update_annotationScore, context, query_batch_size))
+                processes.extend(startBatches(dataType, "annotation score", update_annotationScore, context))
             else:
                 update_annotationScore(dataType, context)
 
