@@ -10,8 +10,8 @@ def startBatches(dataType, name, target, context):
     print(timestamp() + "Counting " + dataType.graph + " " + name + "...")
     count = target(dataType, context, justCount=True)
     print(timestamp() + "Found " + str(count) + " " + name + " in " + dataType.graph)
-    batches = int(count / context.batch_size) + 1
-    if batches > 0:
+    if count > 0:
+        batches = int(count / context.batch_size) + 1
         print(timestamp() + "Initializing " + str(batches) + " batches.")
         for i in range(batches):
             offset = i * context.batch_size
@@ -79,16 +79,14 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, c
     startTime = time.time()
     if justCount:
         return get_count(context, query)
-
+    highest = min((offset+context.batch_size), count)
     mdb = MongoClient("mongodb://localhost:27017/")[context.dbName]
-    start_message = timestamp() + "Downloading " + name + " data for " + dataType.graph
-    if offset:
-        start_message += " in " + str(context.batch_size) + " chunks. Offset: " + str(offset)
+    start_message = timestamp() + "Downloading " + str(offset) + "-" + str(highest) + " " + name + " data for " + dataType.graph
     print(start_message)
     url = generateUrl(context.baseUrl, query, context.batch_size, offset)
     data = urllib.request.urlopen(url)
     durationTime = time.time() - startTime
-    print(timestamp() + "Downloaded " + dataType.graph + " " + name + " data in " + time.strftime("%H:%M:%S.",
+    print(timestamp() + "Completed download of " + dataType.graph + " " + str(offset) + "-" + str(highest) + " " + name + " data in " + time.strftime("%H:%M:%S.",
                                                                                     time.gmtime(durationTime)))
     firstLine = True
     counter = 0
@@ -100,7 +98,7 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, c
             counterWithOffset = counter + offset
             progress = str(counterWithOffset)
             if context.batch_size:
-                progress += "/" + str(min((offset+context.batch_size), count))
+                progress += "/" + str(highest)
             print(timestamp() + dataType.graph + " updated " + name + " line " + progress)
         handler_function(mdb, dataType, line)
 
