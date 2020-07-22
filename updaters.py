@@ -2,7 +2,7 @@ import time
 from pymongo import IndexModel, ASCENDING, TEXT, DESCENDING, MongoClient
 from query_generators import *
 import multiprocessing as mp
-
+import urllib.request
 
 def startBatches(dataType, name, target, context, query_batch_size):
     processes = []
