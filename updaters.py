@@ -79,7 +79,7 @@ def updater_worker(dataType, context, name, query, handler_function, offset=0, b
     if offset:
         start_message += " in " + str(batchSize) + " chunks. Offset: " + str(offset)
     print(start_message)
-    limit = batchSize if offset else context.limit
+    limit = batchSize if batchSize else context.limit
     url = generateUrl(context.baseUrl, query, limit, offset)
     data = urllib.request.urlopen(url)
 
