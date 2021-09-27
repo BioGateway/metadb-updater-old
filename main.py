@@ -45,7 +45,7 @@ headerText = """
 %s          -------------------------------------------------------------------------------
 """ % (timestamp(), timestamp(), timestamp(), timestamp(), baseUrl, timestamp(), dbName, timestamp(), parallel, timestamp())
 
-mbclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mbclient = pymongo.MongoClient("mongodb://localhost:27027/")
 mbdb = mbclient[dbName]
 
 print(headerText)
